@@ -1,0 +1,27 @@
+services:
+  app:
+    build:
+      context: .
+    image: dvcon-paper-rag:local
+    depends_on:
+      - grobid
+    env_file:
+      - .env
+    environment:
+      GROBID_URL: http://grobid:8070
+      GROBID_ENABLED: ${GROBID_ENABLED:-true}
+      PORT: ${PORT:-8000}
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    volumes:
+      - ./paper:/app/paper
+      - ./data:/app/data
+
+  grobid:
+    image: ${GROBID_IMAGE:-grobid/grobid:0.8.2-crf}
+    init: true
+    ulimits:
+      core: 0
+    ports:
+      - "${GROBID_PORT:-8070}:8070"
+      - "${GROBID_ADMIN_PORT:-8071}:8071"

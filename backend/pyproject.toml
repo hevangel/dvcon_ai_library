@@ -1,0 +1,45 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "DVCon proceedings search and chat backend"
+readme = "README.md"
+authors = [
+    { name = "hevangel", email = "hevangel@users.noreply.github.com" }
+]
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "beautifulsoup4>=4.14.3",
+    "chromadb>=1.5.2",
+    "fastapi>=0.135.1",
+    "httpx>=0.28.1",
+    "openai>=2.26.0",
+    "pydantic-settings>=2.13.1",
+    "pymupdf>=1.27.1",
+    "pymupdf4llm>=0.3.4",
+    "python-slugify>=8.0.4",
+    "sentence-transformers>=5.2.3",
+    "sqlmodel>=0.0.37",
+    "torch>=2.10.0",
+    "typer>=0.24.1",
+    "uvicorn[standard]>=0.41.0",
+]
+
+[project.scripts]
+backend = "backend.main:run"
+ingest = "backend.tasks.ingest:app"
+
+[build-system]
+requires = ["uv_build>=0.9.28,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"

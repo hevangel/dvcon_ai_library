@@ -1,0 +1,120 @@
+# DVCon Paper RAG Web App
+
+Professional full-stack search and chat application for the DVCon proceedings archive.
+
+## Features
+
+- Downloads DVCon paper PDFs into `paper/`
+- Extracts markdown, images, and metadata into `data/`
+- Enriches title, abstract, authors, affiliations, and bibliography with a local GROBID sidecar by default
+- Indexes the corpus for keyword and semantic retrieval
+- Supports paper-scoped chat with the OpenAI Responses API
+- Provides PDF, markdown, metadata graph, and chat workflows in a React web UI
+
+## Local run
+
+### Backend
+
+```bash
+./scripts/start_backend.sh
+```
+
+`start_backend.sh` now brings up the local GROBID sidecar automatically before starting FastAPI.
+
+### Frontend
+
+```bash
+./scripts/start_frontend.sh
+```
+
+### Both
+
+```bash
+./scripts/start_all.sh
+```
+
+### Windows PowerShell
+
+```powershell
+.\scripts\start_all.ps1
+```
+
+Both `start_backend.ps1` and `start_all.ps1` start the local GROBID sidecar automatically.
+
+### GROBID sidecar only
+
+```bash
+docker compose up -d grobid
+```
+
+The sidecar exposes:
+
+- `http://127.0.0.1:8070` for the main GROBID API
+- `http://127.0.0.1:8071` for the admin/health port
+
+## Docker
+
+### Full stack with Docker Compose
+
+Run both the app container and the GROBID sidecar together:
+
+```bash
+docker compose up --build
+```
+
+This is now the default container runtime path. The app service reads `.env`, mounts `paper/` and `data/`, and points `GROBID_URL` at the internal `grobid` service automatically.
+
+Build the image:
+
+```bash
+docker build -t dvcon-paper-rag .
+```
+
+Run the container:
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env dvcon-paper-rag
+```
+
+Then open `http://localhost:8000`.
+
+If you want the app container to use a host-managed GROBID sidecar instead of Compose, add:
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env -e GROBID_URL=http://host.docker.internal:8070 dvcon-paper-rag
+```
+
+## Ingestion
+
+Run a small test ingest:
+
+```bash
+uv run --project backend ingest --limit 5
+```
+
+The ingestion pipeline always produces markdown and extracted images through `PyMuPDF` / `pymupdf4llm`. When GROBID is enabled and reachable, it additionally enriches:
+
+- title
+- abstract
+- structured authors
+- affiliations
+- bibliography / references
+
+Raw TEI XML is stored at `data/tei/{year}/{location}/{slug}.tei.xml`.
+
+## Environment
+
+Copy `.env.example` to `.env` and provide:
+
+- `OPENAI_BASE_URL`
+- `OPENAI_API_KEY`
+- `OPENAI_CHAT_MODEL`
+- `GROBID_ENABLED`
+- `GROBID_URL`
+- `GROBID_TIMEOUT_SECONDS`
+- `LOCAL_EMBEDDING_MODEL`
+- `LOCAL_EMBEDDING_DEVICE`
+
+Semantic search uses a local sentence-transformer model, not the OpenAI API, and will prefer CUDA when available.
+
+GROBID is enabled by default. If it is disabled or unavailable, the extractor falls back to the existing heuristic metadata path and still writes markdown and images normally.
