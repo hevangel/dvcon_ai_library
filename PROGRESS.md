@@ -142,6 +142,7 @@ Implemented:
 - click-on-paper behavior that activates the paper and switches to the PDF tab
 - PDF download moved to a compact outlined icon-only button beside the next-page control, using the same styling and fixed dimensions as the pager buttons instead of a separate `Open PDF` button
 - PDF-tab page rendering now auto-resizes to fit the current left-panel width instead of using a fixed page width
+- PDF-tab pagination controls are now kept on a single dedicated line, separate from the wrapping paper title
 - left-panel tab content now suppresses horizontal overflow so the workspace does not show an unnecessary horizontal scrollbar
 - Markdown-tab diagrams now resolve markdown-relative image links through the backend asset route so extracted inline images render correctly during local Vite development and when served by the backend
 - markdown rendering with embedded extracted images
@@ -170,6 +171,7 @@ Implemented:
 - configurable `OPENAI_BASE_URL` and `OPENAI_API_KEY`
 - retrieval-grounded prompt construction
 - support for selected paper scope
+- selected-paper fallback context that preserves the chosen scope for generic prompts like "compare the two papers"
 - title/year citation metadata returned to the UI
 
 Validated:
@@ -178,6 +180,7 @@ Validated:
 - chat path is implemented in backend and wired to frontend
 - live chat requests now complete successfully against the configured `gpt-5-mini` OpenAI-compatible endpoint
 - the chat service no longer hard-codes `temperature`, which previously caused `400` errors from providers that reject that Responses API parameter for this model
+- backend regression tests now cover generic compare prompts so scoped chat does not widen to unrelated papers when `selected_paper_ids` are present
 
 Notes:
 
@@ -200,6 +203,7 @@ Implemented:
   - TEI parsing for title, abstract, authors, affiliations, and references
   - extractor behavior with GROBID enrichment enabled
   - extractor behavior with GROBID unavailable
+- selected-paper chat scope preservation for generic compare prompts
 
 Validated manually during development:
 

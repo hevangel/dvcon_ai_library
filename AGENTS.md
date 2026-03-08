@@ -191,6 +191,7 @@ Verified:
 - all 8 DVCon paper records authored by Horace Chan were then downloaded and added to the local corpus, bringing the current local total to 18 indexed papers
 - a checked-in example corpus was created under `data.example/` containing the 8 Horace Chan PDFs plus extracted markdown, TEI, and image assets
 - live `/summarize` chat requests now succeed against the configured `gpt-5-mini` OpenAI-compatible endpoint after removing the unsupported hard-coded `temperature` parameter
+- selected-paper chat requests now preserve the chosen paper scope for generic prompts like "compare the two papers" instead of falling back to unrelated corpus-wide search results
 
 ## Important Gotchas
 
@@ -206,11 +207,13 @@ Verified:
 - The chat panel still supports typed `/help`, `/clear`, and `/summarize` commands, but the top-of-panel quick-prompt chips were removed from the right panel UI; `/clear` should always return the panel to the help display.
 - The PDF tab uses compact page navigation controls and now exposes PDF download via a small outlined icon-only button that shares the same styling and fixed button dimensions as the `<` and `>` pager controls beside the next-page `>` control instead of a separate `Open PDF` text button.
 - The PDF tab now auto-resizes the rendered PDF page to fit the current left-panel width, including while the desktop split handle is dragged.
+- The PDF tab title can wrap independently, but the pager label plus `<`, `>`, and download controls should stay together on a single line.
 - The left panel should not show a horizontal scrollbar; PDF content is expected to wrap or clip horizontally and only scroll vertically inside its viewport.
 - Extracted markdown now stores image references as markdown-relative `images/...` paths so VS Code preview works against the local filesystem.
 - The Markdown tab resolves those relative image links through the configured backend asset origin so inline diagrams load correctly during frontend dev on `5173` as well as when served by the backend in production.
 - The current local corpus is not year-pure anymore: it contains the 10-paper 2025 test set plus 8 Horace Chan papers from 2012-2022.
 - The checked-in `data.example/` tree is a curated sample corpus and should not be confused with the gitignored runtime `data/` directory.
+- When chat requests include `selected_paper_ids`, the backend should keep that scope authoritative; if retrieval is weak for a generic query, it should still build context from the selected papers rather than broadening to the full corpus.
 - `scripts/start_backend.*` and `scripts/start_all.*` are expected to bring up GROBID automatically.
 - `scripts/start_grobid.*` should wait for `http://127.0.0.1:8070/api/isalive` to return `true`.
 - `docker compose up --build` is the default container path and should start both `app` and `grobid`.

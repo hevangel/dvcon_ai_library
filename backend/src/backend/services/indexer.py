@@ -394,12 +394,15 @@ def run_ingestion(*, limit: int | None = None, force: bool = False) -> list[Pape
 def list_papers(
     *,
     limit: int = 25,
+    paper_ids: list[int] | None = None,
     year: int | None = None,
     location: str | None = None,
     conference_id: int | None = None,
 ) -> list[Paper]:
     with Session(engine) as session:
         query = select(Paper).order_by(Paper.year.desc(), Paper.title)
+        if paper_ids:
+            query = query.where(Paper.id.in_(paper_ids))
         if year is not None:
             query = query.where(Paper.year == year)
         if location:
@@ -413,6 +416,7 @@ def keyword_search(
     query_text: str,
     *,
     limit: int = 25,
+    paper_ids: list[int] | None = None,
     year: int | None = None,
     location: str | None = None,
 ) -> list[SearchHit]:
@@ -420,7 +424,7 @@ def keyword_search(
         if not query_text.strip():
             return [
                 SearchHit(paper=paper, score=1.0, snippet=paper.abstract or paper.title)
-                for paper in list_papers(limit=limit, year=year, location=location)
+                for paper in list_papers(limit=limit, paper_ids=paper_ids, year=year, location=location)
             ]
 
         match_query = _fts_match_query(query_text)
@@ -447,6 +451,8 @@ def keyword_search(
         for paper_id, rank in rows:
             paper = paper_map.get(paper_id)
             if paper is None:
+                continue
+            if paper_ids and paper.id not in paper_ids:
                 continue
             if year is not None and paper.year != year:
                 continue
@@ -524,11 +530,12 @@ def hybrid_search(
     query_text: str,
     *,
     limit: int = 25,
+    paper_ids: list[int] | None = None,
     year: int | None = None,
     location: str | None = None,
 ) -> list[SearchHit]:
-    keyword_hits = keyword_search(query_text, limit=limit, year=year, location=location)
-    semantic_hits = semantic_search(query_text, limit=limit, year=year, location=location)
+    keyword_hits = keyword_search(query_text, limit=limit, paper_ids=paper_ids, year=year, location=location)
+    semantic_hits = semantic_search(query_text, limit=limit, paper_ids=paper_ids, year=year, location=location)
     merged: dict[int, SearchHit] = {}
 
     for hit in keyword_hits:

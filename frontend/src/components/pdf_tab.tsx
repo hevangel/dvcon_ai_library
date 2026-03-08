@@ -58,13 +58,7 @@ export function PdfTab({ paper }: PdfTabProps) {
 
     return (
         <Stack spacing={2} sx={{ height: '100%' }}>
-            <Stack
-                direction={{ xs: 'column', md: 'row' }}
-                spacing={1.5}
-                justifyContent="space-between"
-                alignItems={{ xs: 'flex-start', md: 'center' }}
-                sx={{ minWidth: 0 }}
-            >
+            <Stack spacing={1.5} sx={{ minWidth: 0 }}>
                 <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                     {paper.title}
                 </Typography>
@@ -72,48 +66,41 @@ export function PdfTab({ paper }: PdfTabProps) {
                     direction="row"
                     spacing={1}
                     alignItems="center"
-                    sx={{ flexWrap: 'wrap', rowGap: 1, minWidth: 0 }}
+                    sx={{ flexWrap: 'nowrap', whiteSpace: 'nowrap', minWidth: 0 }}
                 >
-                    <Stack
-                        direction="row"
-                        spacing={1}
-                        alignItems="center"
-                        sx={{ flexWrap: 'wrap', rowGap: 1, whiteSpace: 'nowrap' }}
+                    <Button
+                        variant="outlined"
+                        disabled={page_number <= 1}
+                        onClick={() => set_page_number((value) => value - 1)}
+                        sx={pager_button_sx}
                     >
-                        <Button
-                            variant="outlined"
-                            disabled={page_number <= 1}
-                            onClick={() => set_page_number((value) => value - 1)}
-                            sx={pager_button_sx}
-                        >
-                            {'<'}
-                        </Button>
-                        <Typography color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                            Page {page_number} of {page_count || '--'}
-                        </Typography>
-                        <Button
-                            variant="outlined"
-                            disabled={page_count === 0 || page_number >= page_count}
-                            onClick={() => set_page_number((value) => value + 1)}
-                            sx={pager_button_sx}
-                        >
-                            {'>'}
-                        </Button>
-                        <Tooltip title="Download PDF">
-                            <span>
-                                <Button
-                                    component="a"
-                                    href={pdf_url}
-                                    download
-                                    variant="outlined"
-                                    aria-label="Download PDF"
-                                    sx={pager_button_sx}
-                                >
-                                    <DownloadIcon fontSize="small" />
-                                </Button>
-                            </span>
-                        </Tooltip>
-                    </Stack>
+                        {'<'}
+                    </Button>
+                    <Typography color="text.secondary" sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        Page {page_number} of {page_count || '--'}
+                    </Typography>
+                    <Button
+                        variant="outlined"
+                        disabled={page_count === 0 || page_number >= page_count}
+                        onClick={() => set_page_number((value) => value + 1)}
+                        sx={pager_button_sx}
+                    >
+                        {'>'}
+                    </Button>
+                    <Tooltip title="Download PDF">
+                        <span>
+                            <Button
+                                component="a"
+                                href={pdf_url}
+                                download
+                                variant="outlined"
+                                aria-label="Download PDF"
+                                sx={pager_button_sx}
+                            >
+                                <DownloadIcon fontSize="small" />
+                            </Button>
+                        </span>
+                    </Tooltip>
                 </Stack>
             </Stack>
             <Box
