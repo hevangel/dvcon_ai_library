@@ -1,0 +1,53 @@
+{
+  "papers": [
+    {
+      "year": "2012",
+      "title": "Hardware/Software co-verification using Specman and SystemC with TLM ports",
+      "pdf": "paper/2012/united states/hardware-software-co-verification-using-specman-and-systemc-with-tlm-ports.pdf",
+      "markdown": "data/markdown/2012/united states/hardware-software-co-verification-using-specman-and-systemc-with-tlm-ports.md",
+      "tei": "data/tei/2012/united states/hardware-software-co-verification-using-specman-and-systemc-with-tlm-ports.tei.xml"
+    },
+    {
+      "year": "2013",
+      "title": "Can You Even Debug a 200M+ Gate Design?",
+      "pdf": "paper/2013/united states/can-you-even-debug-a-200m-gate-design.pdf",
+      "markdown": "data/markdown/2013/united states/can-you-even-debug-a-200m-gate-design.md",
+      "tei": "data/tei/2013/united states/can-you-even-debug-a-200m-gate-design.tei.xml"
+    },
+    {
+      "year": "2013",
+      "title": "Maximize Vertical Reuse, Building Module to System Verification Environments with UVM e",
+      "pdf": "paper/2013/united states/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e.pdf",
+      "markdown": "data/markdown/2013/united states/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e.md",
+      "tei": "data/tei/2013/united states/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e.tei.xml"
+    },
+    {
+      "year": "2015",
+      "title": "A Methodology to Port a Complex Multi-Language Design and Testbench for Simulation Acceleration",
+      "pdf": "paper/2015/united states/a-methodology-to-port-a-complex-multi-language-design-and-testbench-for-simulation-acceleration.pdf",
+      "markdown": "data/markdown/2015/united states/a-methodology-to-port-a-complex-multi-language-design-and-testbench-for-simulation-acceleration.md",
+      "tei": "data/tei/2015/united states/a-methodology-to-port-a-complex-multi-language-design-and-testbench-for-simulation-acceleration.tei.xml"
+    },
+    {
+      "year": "2017",
+      "title": "UVM Interactive Debug Library: Shortening the Debug Turnaround Time",
+      "pdf": "paper/2017/united states/uvm-interactive-debug-library-shortening-the-debug-turnaround-time.pdf",
+      "markdown": "data/markdown/2017/united states/uvm-interactive-debug-library-shortening-the-debug-turnaround-time.md",
+      "tei": "data/tei/2017/united states/uvm-interactive-debug-library-shortening-the-debug-turnaround-time.tei.xml"
+    },
+    {
+      "year": "2018",
+      "title": "IDEs SHOULD BE AVAILABLE TO HARDWARE ENGINEERS TOO!",
+      "pdf": "paper/2018/united states/ides-should-be-available-to-hardware-engineers-too.pdf",
+      "markdown": "data/markdown/2018/united states/ides-should-be-available-to-hardware-engineers-too.md",
+      "tei": "data/tei/2018/united states/ides-should-be-available-to-hardware-engineers-too.tei.xml"
+    },
+    {
+      "year": "2019",
+      "title": "How to test the whole firmware/software when the RTL can't fit the emulator",
+      "pdf": "paper/2019/united states/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf",
+      "markdown": "data/markdown/2019/united states/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.md",
+      "tei": "data/tei/2019/united states/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.tei.xml"
+    }
+  ]
+}

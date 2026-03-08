@@ -36,6 +36,7 @@ Implemented:
 - `CONTRIBUTION.md`
 - `README.md`
 - `AGENTS.md`
+- `example/` checked-in sample corpus for the Horace Chan paper subset
 
 Notes:
 
@@ -250,12 +251,16 @@ These items were explicitly verified during implementation:
 - semantic API search returned the ingested paper
 - local manifest-based reindex completed successfully for 37 downloaded papers using `BAAI/bge-m3`
 - old local ingest artifacts were cleared and replaced with a fresh 10-paper 2025 test corpus
+- all 7 paper records authored by Horace Chan were identified, downloaded, extracted, and added to the local corpus, bringing the current indexed total to 17 papers
+- a checked-in example corpus was created under `example/` with the 7 Horace Chan PDFs and their extracted markdown, TEI, and image assets
 
 ## Known Gaps and Risks
 
 These are the main remaining gaps relative to the plan:
 
 - full archive ingest has not been run yet
+- the current local corpus intentionally mixes the 2025 test set with 7 older Horace Chan papers requested later
+- the checked-in `example/` sample intentionally excludes SQLite, Chroma, and model-cache artifacts
 - the new GROBID metadata path has not yet been validated against a larger real DVCon batch in this session
 - no full live chat verification against the current OpenAI-compatible proxy yet
 - no full Docker smoke test yet

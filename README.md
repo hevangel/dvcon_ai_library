@@ -128,6 +128,7 @@ GROBID is enabled by default. If it is disabled or unavailable, the extractor fa
 ## Current Local Test Corpus
 
 The current local test corpus was reset and rebuilt from scratch with `10` indexed papers from event year `2025`.
+The repo also now includes a checked-in sample corpus under `example/paper/` and `example/data/` containing the 7 Horace Chan papers plus their extracted markdown, TEI, and image assets.
 
 If you switch embedding models on an existing corpus, run a forced ingest so Chroma is rebuilt for the new vector dimension.
 

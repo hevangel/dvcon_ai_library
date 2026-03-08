@@ -18,7 +18,7 @@ Build and maintain a web app that:
 
 - Use `uv` for Python dependency management and Python commands.
 - Use snake_case and 4-space indentation.
-- Do not commit secrets or generated corpus data.
+- Do not commit secrets or the full generated runtime corpus. A curated example corpus is acceptable only when explicitly requested by the user.
 - Default interpretation of a change request: do the implementation work, update the code, update `AGENTS.md`, and update `PROGRESS.md` unless the user explicitly narrows the scope.
 
 ## Current Architecture
@@ -85,6 +85,7 @@ Build and maintain a web app that:
 - `compose.yaml`: repo-managed app + GROBID runtime stack
 - `paper/`: raw downloaded papers
 - `data/`: extracted markdown tree, TEI cache, DB, Chroma, model cache
+- `example/`: checked-in Horace Chan sample corpus mirroring the `paper/` and extracted `data/` layout without local DB/vector artifacts
 
 ## Backend API Surface
 
@@ -184,6 +185,8 @@ Verified:
 - semantic search returns results after reindex
 - local manifest-based reindex completed for 37 downloaded papers with `BAAI/bge-m3`
 - local corpus was later reset and rebuilt as a fresh 10-paper 2025 test set
+- all 7 DVCon paper records authored by Horace Chan were then downloaded and added to the local corpus, bringing the current local total to 17 indexed papers
+- a checked-in example corpus was created under `example/` containing the 7 Horace Chan PDFs plus extracted markdown, TEI, and image assets
 
 ## Important Gotchas
 
@@ -197,6 +200,8 @@ Verified:
 - The title bar subtitle emphasizes corpus counts inline instead of using title-bar chips.
 - The search tab keeps its controls fixed while the result list itself scrolls.
 - The chat panel exposes `/help`, `/clear`, and `/summarize` as quick prompts; `/clear` should always return the panel to the help display.
+- The current local corpus is not year-pure anymore: it contains the 10-paper 2025 test set plus 7 Horace Chan papers from 2012-2019.
+- The checked-in `example/paper/` and `example/data/` trees are a curated sample corpus and should not be confused with the gitignored runtime `paper/` and `data/` directories.
 - `scripts/start_backend.*` and `scripts/start_all.*` are expected to bring up GROBID automatically.
 - `scripts/start_grobid.*` should wait for `http://127.0.0.1:8070/api/isalive` to return `true`.
 - `docker compose up --build` is the default container path and should start both `app` and `grobid`.
