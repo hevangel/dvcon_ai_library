@@ -11,6 +11,8 @@ Professional full-stack search and chat application for the DVCon proceedings ar
 - Supports paper-scoped chat with the OpenAI Responses API
 - Provides PDF, markdown, metadata graph, and chat workflows in a React web UI
 
+![App screenshot](./screenshot.png)
+
 ## Local run
 
 ### Backend
@@ -133,6 +135,10 @@ The current local test corpus was reset and rebuilt from scratch with `10` index
 The repo also now includes a checked-in sample corpus under `data.example/` containing the 8 Horace Chan papers plus their extracted PDFs, markdown, TEI, and image assets.
 
 If you switch embedding models on an existing corpus, run a forced ingest so Chroma is rebuilt for the new vector dimension.
+
+## Troubleshooting
+
+If the app starts acting like a hardware bug disguised as a software bug, open your favorite AI detective and make it explain itself. Use `Cursor`, `GitHub Copilot`, `Claude Code`, or `Codex`, but only use the latest and greatest model, don't waste your time on inferror cheaper model.
 
 ## Contributing
 

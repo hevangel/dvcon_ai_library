@@ -1,6 +1,6 @@
 import DownloadIcon from '@mui/icons-material/Download'
 import { Box, Button, Paper, Stack, Tooltip, Typography } from '@mui/material'
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 
 import { build_pdf_url } from '../api/client'
@@ -18,6 +18,30 @@ interface PdfTabProps {
 export function PdfTab({ paper }: PdfTabProps) {
     const [page_count, set_page_count] = useState(0)
     const [page_number, set_page_number] = useState(1)
+    const [page_width, set_page_width] = useState(0)
+    const pdf_container_ref = useRef<HTMLDivElement | null>(null)
+
+    useLayoutEffect(() => {
+        const container = pdf_container_ref.current
+        if (!container) {
+            return
+        }
+
+        const update_page_width = () => {
+            set_page_width(Math.max(0, Math.floor(container.getBoundingClientRect().width)))
+        }
+
+        update_page_width()
+
+        const observer = new ResizeObserver(() => {
+            update_page_width()
+        })
+        observer.observe(container)
+
+        return () => {
+            observer.disconnect()
+        }
+    }, [])
 
     if (!paper) {
         return (
@@ -39,19 +63,22 @@ export function PdfTab({ paper }: PdfTabProps) {
                 spacing={1.5}
                 justifyContent="space-between"
                 alignItems={{ xs: 'flex-start', md: 'center' }}
+                sx={{ minWidth: 0 }}
             >
-                <Typography variant="h6">{paper.title}</Typography>
+                <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                    {paper.title}
+                </Typography>
                 <Stack
                     direction="row"
                     spacing={1}
                     alignItems="center"
-                    sx={{ flexWrap: 'wrap', rowGap: 1 }}
+                    sx={{ flexWrap: 'wrap', rowGap: 1, minWidth: 0 }}
                 >
                     <Stack
                         direction="row"
                         spacing={1}
                         alignItems="center"
-                        sx={{ flexWrap: 'nowrap', whiteSpace: 'nowrap' }}
+                        sx={{ flexWrap: 'wrap', rowGap: 1, whiteSpace: 'nowrap' }}
                     >
                         <Button
                             variant="outlined"
@@ -90,31 +117,36 @@ export function PdfTab({ paper }: PdfTabProps) {
                 </Stack>
             </Stack>
             <Box
+                ref={pdf_container_ref}
                 sx={{
                     flex: 1,
-                    overflow: 'auto',
+                    overflowX: 'hidden',
+                    overflowY: 'auto',
                     border: '1px solid',
                     borderColor: 'divider',
                     borderRadius: 2,
                     backgroundColor: '#f5f7fb',
-                    p: 2,
                 }}
             >
-                <Document
-                    file={pdf_url}
-                    onLoadSuccess={({ numPages }) => {
-                        set_page_count(numPages)
-                        set_page_number(1)
-                    }}
-                    loading="Loading PDF..."
-                >
-                    <Page
-                        pageNumber={page_number}
-                        renderAnnotationLayer={false}
-                        renderTextLayer={false}
-                        width={900}
-                    />
-                </Document>
+                <Box sx={{ minWidth: 0, width: '100%', display: 'flex', justifyContent: 'center' }}>
+                    <Document
+                        file={pdf_url}
+                        onLoadSuccess={({ numPages }) => {
+                            set_page_count(numPages)
+                            set_page_number(1)
+                        }}
+                        loading="Loading PDF..."
+                    >
+                        {page_width > 0 ? (
+                            <Page
+                                pageNumber={page_number}
+                                renderAnnotationLayer={false}
+                                renderTextLayer={false}
+                                width={page_width}
+                            />
+                        ) : null}
+                    </Document>
+                </Box>
             </Box>
         </Stack>
     )

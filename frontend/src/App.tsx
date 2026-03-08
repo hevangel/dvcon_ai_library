@@ -301,7 +301,7 @@ function App() {
                                 <Tab label="Metadata Graph" />
                             </Tabs>
 
-                            <Box sx={{ p: 2.5, flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                            <Box sx={{ p: 2.5, flex: 1, minHeight: 0, overflowX: 'hidden', overflowY: 'hidden' }}>
                                 {active_tab === 0 ? (
                                     <SearchResultsTab
                                         stats={stats_query.data}

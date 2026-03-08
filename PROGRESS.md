@@ -141,6 +141,8 @@ Implemented:
   - independent result-list scrolling inside the left panel
 - click-on-paper behavior that activates the paper and switches to the PDF tab
 - PDF download moved to a compact outlined icon-only button beside the next-page control, using the same styling and fixed dimensions as the pager buttons instead of a separate `Open PDF` button
+- PDF-tab page rendering now auto-resizes to fit the current left-panel width instead of using a fixed page width
+- left-panel tab content now suppresses horizontal overflow so the workspace does not show an unnecessary horizontal scrollbar
 - Markdown-tab diagrams now resolve markdown-relative image links through the backend asset route so extracted inline images render correctly during local Vite development and when served by the backend
 - markdown rendering with embedded extracted images
 - graph view using Cytoscape
