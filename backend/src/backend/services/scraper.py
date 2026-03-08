@@ -38,14 +38,36 @@ class ManifestStore:
         self.path = path
         self.data = self._load()
 
+    def _normalize_pdf_path(self, pdf_path: str) -> str:
+        if not pdf_path.startswith("paper/"):
+            return pdf_path
+
+        settings = get_settings()
+        paper_root = settings.paper_dir.relative_to(settings.repo_root).as_posix()
+        return f"{paper_root}/{pdf_path.removeprefix('paper/')}"
+
     def _load(self) -> dict[str, Any]:
         if not self.path.exists():
             return {"documents": {}}
 
         try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
+            data = json.loads(self.path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             return {"documents": {}}
+
+        documents = data.setdefault("documents", {})
+        for record in documents.values():
+            pdf_path = record.get("pdf_path")
+            if isinstance(pdf_path, str):
+                record["pdf_path"] = self._normalize_pdf_path(pdf_path)
+
+            seed = record.get("seed")
+            if isinstance(seed, dict):
+                seed_pdf_path = seed.get("pdf_path")
+                if isinstance(seed_pdf_path, str):
+                    seed["pdf_path"] = self._normalize_pdf_path(seed_pdf_path)
+
+        return data
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -144,7 +166,8 @@ def parse_document_detail(source_url: str) -> PaperSeed | None:
     location = detail_map.get("location", "unknown").strip().lower()
     title = heading.get_text(strip=True).replace("– DVCon Proceedings Archive", "").strip()
     slug = slugify(source_url.rstrip("/").split("/")[-1])
-    pdf_relative_path = Path("paper") / str(year) / location / f"{slug}.pdf"
+    paper_root = settings.paper_dir.relative_to(settings.repo_root)
+    pdf_relative_path = paper_root / str(year) / location / f"{slug}.pdf"
     conference_name = f"DVCon {location.title()} {year}"
 
     pdf_url = urljoin(DVCON_BASE_URL, download_anchor.get("href", ""))

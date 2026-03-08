@@ -57,7 +57,7 @@ oriented features have also been mentioned to provide a comprehensive analysis:
 different syntactic categories of text according to the syntax definition in use.
 
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-1-0.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-1-0.png)
 
 Figure 1. Syntax Highlighting (SVEditor)
 
@@ -101,9 +101,9 @@ navigation. Experience has shown that using these facilities can become quite cu
 
 
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-1-1.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-1-1.png)
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-1-2.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-1-2.png)
 consuming when dealing with symbol definitions that are spread out across different directories. Using
 search utilities such as ‘grep’ for symbol lookup also requires specifying the path name relative to the current
 working directory. This is an added step, compared to an IDE which accomplishes the same functionality
@@ -150,7 +150,7 @@ port with the same name as the port being refactored in module A. If module B, d
 
 
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-2-0.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-2-0.png)
 to do with module A, a normal search and replace would have replaced all occurrences of the port name
 and led to a potential design bug.
 
@@ -185,11 +185,11 @@ Figure 6. File browsing (SVEditor)
 
 
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-3-0.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-3-0.png)
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-3-1.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-3-1.png)
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-3-2.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-3-2.png)
 Using both these features removes effort that would normally be required to open up multiple files across
 different tabs/terminals in order to understand the design organization and dependencies.
 
@@ -232,10 +232,10 @@ Figure 9. Macro recording (SlickEdit)
 
 
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-4-0.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-4-0.png)
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-4-1.png)
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-5-0.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-4-1.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-5-0.png)
 
 Figure 10. Macro conversion to Slick-C code (Slickedit)
 
@@ -266,7 +266,7 @@ Figure 11. Macro expansion for uvm_component factory (SVEditor)
 
 
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-5-1.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-5-1.png)
 UVM has a large number of Macros useful for specifying user intent without writing a large number of
 SystemVerilog constructs. Macro expansion can be used to analyze the exact structure and intent of these
 Macros with a few clicks and minimal effort.
@@ -310,7 +310,7 @@ Pressing the blue “+” icon on the left of the function header will automatic
 
 
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-6-0.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-6-0.png)
 function. Similarly pressing the “-“button next to the class “ubus_master_sequencer” class header will
 collapse the entire class.
 
@@ -378,7 +378,7 @@ output on the console through a smart log viewer. Errors and warnings dumped in 
 
 
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-7-0.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-7-0.png)
 hyperlinked to the problematic source code [8]. Similarly, Sigasi can also be used to compile and launch
 simulations from within the tool GUI and trace back any errors detected as soon as a file is saved/built by
 launching an external compiler. This is currently supported only for Aldec Riviera-Pro,
@@ -653,7 +653,7 @@ debug support for modern HDLs and verification standards.
 
 
 
-![](/assets/data/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-11-0.png)
+![](/assets/data.example/markdown/2018/united states/images/ides-should-be-available-to-hardware-engineers-too/ides-should-be-available-to-hardware-engineers-too.pdf-11-0.png)
 _A. Learning Curve_
 
 All the tools mentioned are quite user friendly and have shown to be quite popular with new graduates and junior

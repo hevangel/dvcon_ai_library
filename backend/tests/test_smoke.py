@@ -1,8 +1,13 @@
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
+from backend.db.models import Paper
 from backend.main import app
+from backend.services.chat import answer_question
 from backend.services.embeddings import resolve_embedding_device
 from backend.services.extractor import _extract_abstract, _extract_affiliations, _extract_references
+from backend.services.indexer import SearchHit
 from backend.services.indexer import _chunk_markdown, _dedupe_authors
 from backend.services.scraper import _parse_detail_text_map
 from backend.services.tei_parser import ParsedAuthor
@@ -106,3 +111,55 @@ def test_dedupe_authors_merges_duplicate_grobid_entries() -> None:
     assert [author.full_name for author in deduped] == ["Alice Example", "Bob Example"]
     assert deduped[0].affiliations == ["Company A", "Company C"]
     assert deduped[0].email == "alice@example.com"
+
+
+def test_answer_question_omits_temperature_for_chat_model(monkeypatch) -> None:
+    captured_request: dict[str, object] = {}
+
+    class FakeResponses:
+        def create(self, **kwargs: object):
+            captured_request.update(kwargs)
+            return SimpleNamespace(output_text="Grounded summary.")
+
+    class FakeOpenAI:
+        def __init__(self, *, api_key: str, base_url: str) -> None:
+            captured_request["api_key"] = api_key
+            captured_request["base_url"] = base_url
+            self.responses = FakeResponses()
+
+    paper = Paper(
+        id=7,
+        source_url="https://example.com/paper",
+        pdf_url="https://example.com/paper.pdf",
+        slug="example-paper",
+        title="Example Paper",
+        year=2025,
+        location="United States",
+        pdf_path="data/paper/2025/united states/example-paper.pdf",
+    )
+    hits = [SearchHit(paper=paper, score=0.98, snippet="This is a grounded excerpt.")]
+
+    monkeypatch.setattr(
+        "backend.services.chat.get_settings",
+        lambda: SimpleNamespace(
+            chat_is_configured=True,
+            openai_api_key="test-key",
+            openai_base_url="https://example.invalid/v1",
+            openai_chat_model="gpt-5-mini",
+        ),
+    )
+    monkeypatch.setattr("backend.services.chat._context_hits", lambda question, selected_paper_ids: hits)
+    monkeypatch.setattr("backend.services.chat.OpenAI", FakeOpenAI)
+
+    answer = answer_question(
+        messages=[{"role": "user", "content": "Summarize this paper."}],
+        selected_paper_ids=[paper.id],
+    )
+
+    assert answer.answer == "Grounded summary."
+    assert answer.scope_paper_ids == [paper.id]
+    assert captured_request["api_key"] == "test-key"
+    assert captured_request["base_url"] == "https://example.invalid/v1"
+    assert captured_request["model"] == "gpt-5-mini"
+    assert "temperature" not in captured_request
+    assert "[Source 1]" in str(captured_request["input"])

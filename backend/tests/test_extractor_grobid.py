@@ -21,7 +21,7 @@ def _seed() -> PaperSeed:
         document_type="Paper",
         conference_name="DVCon U.S. 2025",
         conference_slug="dvcon-us-2025",
-        pdf_path="paper/2025/us/sample-paper.pdf",
+        pdf_path="data/paper/2025/us/sample-paper.pdf",
     )
 
 
@@ -54,7 +54,7 @@ def test_extract_pdf_uses_grobid_metadata_when_available(monkeypatch, tmp_path) 
     grobid_document = ParsedTeiDocument(
         title="GROBID Title",
         abstract="GROBID abstract",
-        authors=[ParsedAuthor(full_name="Alice Example", affiliations=["Example Semiconductor"])],
+        authors=[ParsedAuthor(full_name="Seed Author", affiliations=["Example Semiconductor"])],
         affiliations=["Example Semiconductor"],
         references=[
             ParsedReference(
@@ -76,7 +76,8 @@ def test_extract_pdf_uses_grobid_metadata_when_available(monkeypatch, tmp_path) 
     extracted = extract_pdf(_seed())
 
     assert extracted.title == "GROBID Title"
-    assert extracted.authors_text == "Alice Example"
+    assert extracted.authors_text == "Seed Author"
+    assert extracted.authors[0].affiliations == ["Example Semiconductor"]
     assert extracted.abstract == "GROBID abstract"
     assert extracted.affiliations == ["Example Semiconductor"]
     assert extracted.tei_path == "data/tei/2025/us/sample-paper.tei.xml"

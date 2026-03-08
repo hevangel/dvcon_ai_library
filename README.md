@@ -4,7 +4,7 @@ Professional full-stack search and chat application for the DVCon proceedings ar
 
 ## Features
 
-- Downloads DVCon paper PDFs into `paper/`
+- Downloads DVCon paper PDFs into `data/paper/`
 - Extracts markdown, images, and metadata into `data/`
 - Enriches title, abstract, authors, affiliations, and bibliography with a local GROBID sidecar by default
 - Indexes the corpus for keyword and semantic retrieval
@@ -63,7 +63,7 @@ Run both the app container and the GROBID sidecar together:
 docker compose up --build
 ```
 
-This is now the default container runtime path. The app service reads `.env`, mounts `paper/` and `data/`, waits for GROBID readiness before starting, and points `GROBID_URL` at the internal `grobid` service automatically.
+This is now the default container runtime path. The app service reads `.env`, mounts `${DATA_DIR:-data}` into `/app/${DATA_DIR:-data}`, waits for GROBID readiness before starting, and points `GROBID_URL` at the internal `grobid` service automatically.
 
 By default, Docker Compose publishes the app on `http://127.0.0.1:8011` so it does not collide with the existing local backend on `8010`. You can override this with `APP_HOST_PORT`.
 If your Docker installation uses the legacy CLI, `docker-compose up --build` is equivalent.
@@ -114,6 +114,7 @@ Copy `.env.example` to `.env` and provide:
 - `OPENAI_API_KEY`
 - `OPENAI_CHAT_MODEL`
 - `APP_HOST_PORT`
+- `DATA_DIR`
 - `GROBID_ENABLED`
 - `GROBID_URL`
 - `GROBID_TIMEOUT_SECONDS`
@@ -122,13 +123,14 @@ Copy `.env.example` to `.env` and provide:
 
 Semantic search uses a local sentence-transformer model, not the OpenAI API, and will prefer CUDA when available.
 The default local embedding model in the repo config is `BAAI/bge-m3`.
+The default chat model is now `gpt-5-mini`.
 
 GROBID is enabled by default. If it is disabled or unavailable, the extractor falls back to the existing heuristic metadata path and still writes markdown and images normally.
 
 ## Current Local Test Corpus
 
-The current local test corpus was reset and rebuilt from scratch with `10` indexed papers from event year `2025`.
-The repo also now includes a checked-in sample corpus under `example/paper/` and `example/data/` containing the 7 Horace Chan papers plus their extracted markdown, TEI, and image assets.
+The current local test corpus was reset and rebuilt from scratch with `10` indexed papers from event year `2025`, then later extended with `8` Horace Chan papers through `2022`.
+The repo also now includes a checked-in sample corpus under `data.example/` containing the 8 Horace Chan papers plus their extracted PDFs, markdown, TEI, and image assets.
 
 If you switch embedding models on an existing corpus, run a forced ingest so Chroma is rebuilt for the new vector dimension.
 

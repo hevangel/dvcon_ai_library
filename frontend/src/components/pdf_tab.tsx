@@ -1,7 +1,5 @@
-import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore'
-import NavigateNextIcon from '@mui/icons-material/NavigateNext'
-import OpenInNewIcon from '@mui/icons-material/OpenInNew'
-import { Box, Button, Paper, Stack, Typography } from '@mui/material'
+import DownloadIcon from '@mui/icons-material/Download'
+import { Box, Button, Paper, Stack, Tooltip, Typography } from '@mui/material'
 import { useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 
@@ -32,41 +30,64 @@ export function PdfTab({ paper }: PdfTabProps) {
     }
 
     const pdf_url = build_pdf_url(paper.paper_id)
+    const pager_button_sx = { minWidth: 0, width: 36, minHeight: 36, height: 36, p: 0 }
 
     return (
         <Stack spacing={2} sx={{ height: '100%' }}>
-            <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center">
+            <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={1.5}
+                justifyContent="space-between"
+                alignItems={{ xs: 'flex-start', md: 'center' }}
+            >
                 <Typography variant="h6">{paper.title}</Typography>
-                <Button
-                    href={pdf_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    endIcon={<OpenInNewIcon />}
-                    variant="outlined"
+                <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    sx={{ flexWrap: 'wrap', rowGap: 1 }}
                 >
-                    Open PDF
-                </Button>
-            </Stack>
-            <Stack direction="row" spacing={1} alignItems="center">
-                <Button
-                    variant="outlined"
-                    startIcon={<NavigateBeforeIcon />}
-                    disabled={page_number <= 1}
-                    onClick={() => set_page_number((value) => value - 1)}
-                >
-                    Previous
-                </Button>
-                <Typography color="text.secondary">
-                    Page {page_number} of {page_count || '--'}
-                </Typography>
-                <Button
-                    variant="outlined"
-                    endIcon={<NavigateNextIcon />}
-                    disabled={page_count === 0 || page_number >= page_count}
-                    onClick={() => set_page_number((value) => value + 1)}
-                >
-                    Next
-                </Button>
+                    <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                        sx={{ flexWrap: 'nowrap', whiteSpace: 'nowrap' }}
+                    >
+                        <Button
+                            variant="outlined"
+                            disabled={page_number <= 1}
+                            onClick={() => set_page_number((value) => value - 1)}
+                            sx={pager_button_sx}
+                        >
+                            {'<'}
+                        </Button>
+                        <Typography color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                            Page {page_number} of {page_count || '--'}
+                        </Typography>
+                        <Button
+                            variant="outlined"
+                            disabled={page_count === 0 || page_number >= page_count}
+                            onClick={() => set_page_number((value) => value + 1)}
+                            sx={pager_button_sx}
+                        >
+                            {'>'}
+                        </Button>
+                        <Tooltip title="Download PDF">
+                            <span>
+                                <Button
+                                    component="a"
+                                    href={pdf_url}
+                                    download
+                                    variant="outlined"
+                                    aria-label="Download PDF"
+                                    sx={pager_button_sx}
+                                >
+                                    <DownloadIcon fontSize="small" />
+                                </Button>
+                            </span>
+                        </Tooltip>
+                    </Stack>
+                </Stack>
             </Stack>
             <Box
                 sx={{
@@ -90,7 +111,7 @@ export function PdfTab({ paper }: PdfTabProps) {
                     <Page
                         pageNumber={page_number}
                         renderAnnotationLayer={false}
-                        renderTextLayer
+                        renderTextLayer={false}
                         width={900}
                     />
                 </Document>

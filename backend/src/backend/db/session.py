@@ -26,6 +26,20 @@ def _ensure_column(session: Session, table_name: str, column_name: str, definiti
     session.exec(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"))
 
 
+def _migrate_legacy_pdf_paths(session: Session) -> None:
+    paper_root = settings.paper_dir.relative_to(settings.repo_root).as_posix()
+    session.exec(
+        text(
+            """
+            UPDATE paper
+            SET pdf_path = :paper_root || substr(pdf_path, 6)
+            WHERE pdf_path LIKE 'paper/%'
+            """
+        ),
+        params={"paper_root": f"{paper_root}/"},
+    )
+
+
 def create_db_and_tables() -> None:
     SQLModel.metadata.create_all(engine)
 
@@ -51,6 +65,7 @@ def create_db_and_tables() -> None:
             """
             )
         )
+        _migrate_legacy_pdf_paths(session)
         session.commit()
 
 

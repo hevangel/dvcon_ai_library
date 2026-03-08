@@ -20,6 +20,7 @@ services:
       GROBID_URL: http://grobid:8070
       GROBID_ENABLED: ${GROBID_ENABLED:-true}
       PORT: ${PORT:-8000}
+      DATA_DIR: ${DATA_DIR:-data}
     healthcheck:
       test:
         - CMD-SHELL
@@ -33,8 +34,7 @@ services:
     ports:
       - "${APP_HOST_PORT:-8011}:${PORT:-8000}"
     volumes:
-      - ./paper:/app/paper
-      - ./data:/app/data
+      - "./${DATA_DIR:-data}:/app/${DATA_DIR:-data}"
 
   grobid:
     image: ${GROBID_IMAGE:-grobid/grobid:0.8.2-crf}

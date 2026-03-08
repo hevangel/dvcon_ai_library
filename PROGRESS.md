@@ -36,7 +36,7 @@ Implemented:
 - `CONTRIBUTION.md`
 - `README.md`
 - `AGENTS.md`
-- `example/` checked-in sample corpus for the Horace Chan paper subset
+- `data.example/` checked-in sample corpus for the Horace Chan paper subset
 
 Notes:
 
@@ -49,7 +49,7 @@ Notes:
 - Docker Compose now publishes the app on host port `8011` by default to avoid conflict with the local backend on `8010`.
 - The local GROBID startup scripts now support both `docker compose` and legacy `docker-compose`.
 
-### 2. Implement DVCon crawler and resumable PDF download into `paper/`
+### 2. Implement DVCon crawler and resumable PDF download into `data/paper/`
 
 Status: complete
 
@@ -59,7 +59,7 @@ Implemented:
 - paper-only filtering based on detail-page metadata
 - direct PDF download
 - resumable manifest at `data/ingest_manifest.json`
-- storage under `paper/{year}/{location}/{slug}.pdf`
+- storage under `data/paper/{year}/{location}/{slug}.pdf`
 
 Notes:
 
@@ -139,11 +139,13 @@ Implemented:
   - checkbox multi-select
   - independent result-list scrolling inside the left panel
 - click-on-paper behavior that activates the paper and switches to the PDF tab
+- PDF download moved to a compact outlined icon-only button beside the next-page control, using the same styling and fixed dimensions as the pager buttons instead of a separate `Open PDF` button
+- Markdown-tab diagrams now resolve asset URLs against the backend origin so extracted inline images render correctly during local Vite development
 - markdown rendering with embedded extracted images
 - graph view using Cytoscape
 - right-side chat panel with:
   - transcript
-  - quick prompts for `/help`, `/clear`, and `/summarize`
+  - typed support for `/help`, `/clear`, and `/summarize`
   - command-aware help display that returns after `/clear`
   - Enter to submit
   - Shift+Enter for newline
@@ -157,7 +159,7 @@ Partial / limitations:
 
 ### 6. Integrate OpenAI Responses API for paper-scoped chat
 
-Status: implemented, partially validated
+Status: implemented and validated
 
 Implemented:
 
@@ -171,10 +173,11 @@ Validated:
 
 - backend loads chat configuration from `.env`
 - chat path is implemented in backend and wired to frontend
+- live chat requests now complete successfully against the configured `gpt-5-mini` OpenAI-compatible endpoint
+- the chat service no longer hard-codes `temperature`, which previously caused `400` errors from providers that reject that Responses API parameter for this model
 
-Not yet fully verified:
+Notes:
 
-- a complete live browser-driven chat round trip against the configured proxy was not fully finished in this session
 - local runtime needed a port move from `8000` to `8010` because another unrelated service was already using `8000`
 
 ### 7. Add smoke tests and basic validation for scrape, extract, search, and chat endpoints
@@ -216,7 +219,7 @@ Status: complete
 
 Implemented:
 
-- `/paper/` and `/data/` are gitignored
+- `/data/` is gitignored
 - `.env` is gitignored
 - frontend local dev env override is gitignored
 - generated corpus data and secrets are not intended for git
@@ -230,6 +233,7 @@ Implemented:
 - local embedding model via `sentence-transformers`
 - `torch` installed from the CUDA wheel index
 - embedding device resolution with CUDA preference and CPU fallback
+- default chat model updated to `gpt-5-mini` in runtime env/config templates
 
 Verified:
 
@@ -238,6 +242,7 @@ Verified:
 - the previous local embedding configuration generated 384-dim vectors
 - the current Chroma collection metadata now reports `BAAI/bge-m3`
 - the local `.env` was updated to `BAAI/bge-m3` so future restarts stay aligned with the rebuilt index
+- Dockerfile and `compose.yaml` now honor `DATA_DIR` for the runtime data mount and container path
 
 ## Current Verified Progress
 
@@ -251,18 +256,17 @@ These items were explicitly verified during implementation:
 - semantic API search returned the ingested paper
 - local manifest-based reindex completed successfully for 37 downloaded papers using `BAAI/bge-m3`
 - old local ingest artifacts were cleared and replaced with a fresh 10-paper 2025 test corpus
-- all 7 paper records authored by Horace Chan were identified, downloaded, extracted, and added to the local corpus, bringing the current indexed total to 17 papers
-- a checked-in example corpus was created under `example/` with the 7 Horace Chan PDFs and their extracted markdown, TEI, and image assets
+- all 8 paper records authored by Horace Chan were identified, downloaded, extracted, and added to the local corpus, bringing the current indexed total to 18 papers
+- a checked-in example corpus was created under `data.example/` with the 8 Horace Chan PDFs and their extracted markdown, TEI, and image assets
 
 ## Known Gaps and Risks
 
 These are the main remaining gaps relative to the plan:
 
 - full archive ingest has not been run yet
-- the current local corpus intentionally mixes the 2025 test set with 7 older Horace Chan papers requested later
-- the checked-in `example/` sample intentionally excludes SQLite, Chroma, and model-cache artifacts
+- the current local corpus intentionally mixes the 2025 test set with 8 Horace Chan papers from 2012-2022
+- the checked-in `data.example/` sample intentionally excludes SQLite, Chroma, and model-cache artifacts
 - the new GROBID metadata path has not yet been validated against a larger real DVCon batch in this session
-- no full live chat verification against the current OpenAI-compatible proxy yet
 - no full Docker smoke test yet
 - no automated frontend test suite yet
 - no large-corpus performance validation yet

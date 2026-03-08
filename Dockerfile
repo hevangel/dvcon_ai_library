@@ -10,6 +10,7 @@ FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV DATA_DIR=data
 
 WORKDIR /app
 
@@ -22,7 +23,7 @@ COPY frontend/dist ./frontend/dist
 COPY scripts ./scripts
 COPY .env.example ./.env.example
 
-RUN mkdir -p /app/paper /app/data
+RUN mkdir -p "/app/${DATA_DIR}"
 
 EXPOSE 8000
 

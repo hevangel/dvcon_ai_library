@@ -12,6 +12,9 @@ import type {
 } from '../types/api'
 
 const api_base_url = import.meta.env.VITE_API_BASE_URL ?? '/api'
+const backend_base_url = /^https?:\/\//.test(api_base_url)
+    ? api_base_url.replace(/\/api\/?$/, '')
+    : ''
 
 export const api_client = axios.create({
     baseURL: api_base_url,
@@ -19,6 +22,22 @@ export const api_client = axios.create({
 
 export function build_pdf_url(paper_id: number): string {
     return `${api_base_url}/papers/${paper_id}/pdf`
+}
+
+export function build_asset_url(asset_url: string): string {
+    if (!asset_url || /^([a-z]+:)?\/\//i.test(asset_url) || asset_url.startsWith('data:')) {
+        return asset_url
+    }
+
+    if (!backend_base_url) {
+        return asset_url
+    }
+
+    if (asset_url.startsWith('/')) {
+        return `${backend_base_url}${asset_url}`
+    }
+
+    return `${backend_base_url}/${asset_url}`
 }
 
 export async function fetch_stats(): Promise<StatsResponse> {

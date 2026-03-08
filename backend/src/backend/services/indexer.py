@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import re
 from typing import Any
 
 import chromadb
@@ -31,6 +32,12 @@ class SearchHit:
     paper: Paper
     score: float
     snippet: str
+
+
+def _fts_match_query(query_text: str) -> str:
+    tokens = re.findall(r"[0-9A-Za-z]+(?:'[0-9A-Za-z]+)?", query_text.casefold())
+    unique_tokens = list(dict.fromkeys(token for token in tokens if token))
+    return " OR ".join(f'"{token}"' for token in unique_tokens)
 
 
 def _get_chroma_collection():
@@ -416,6 +423,10 @@ def keyword_search(
                 for paper in list_papers(limit=limit, year=year, location=location)
             ]
 
+        match_query = _fts_match_query(query_text)
+        if not match_query:
+            return []
+
         statement = text(
             """
             SELECT paper_id, bm25(paper_fts) AS rank
@@ -425,7 +436,7 @@ def keyword_search(
             LIMIT :limit
             """
         )
-        rows = session.exec(statement, params={"query": query_text, "limit": limit * 3}).all()
+        rows = session.exec(statement, params={"query": match_query, "limit": limit * 3}).all()
         paper_ids = [row[0] for row in rows]
         if not paper_ids:
             return []

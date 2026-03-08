@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     openai_base_url: str | None = None
     openai_api_key: str | None = None
-    openai_chat_model: str = "gpt-4.1-mini"
+    openai_chat_model: str = "gpt-5-mini"
 
     grobid_enabled: bool = True
     grobid_url: str = "http://127.0.0.1:8070"
@@ -46,16 +46,17 @@ class Settings(BaseSettings):
     chunk_size: int = 1400
     chunk_overlap: int = 200
     max_search_results: int = 50
+    data_dir_name: str = Field(default="data", alias="DATA_DIR")
 
     repo_root: Path = Field(default_factory=_repo_root)
 
     @property
     def paper_dir(self) -> Path:
-        return self.repo_root / "paper"
+        return self.data_dir / "paper"
 
     @property
     def data_dir(self) -> Path:
-        return self.repo_root / "data"
+        return self.repo_root / self.data_dir_name
 
     @property
     def markdown_dir(self) -> Path:

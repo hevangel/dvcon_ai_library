@@ -2,6 +2,7 @@ import { Box, Paper, Typography } from '@mui/material'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { build_asset_url } from '../api/client'
 import type { MarkdownResponse, PaperDetailResponse } from '../types/api'
 
 interface MarkdownTabProps {
@@ -38,6 +39,7 @@ export function MarkdownTab({ paper, markdown }: MarkdownTabProps) {
                 borderRadius: 2,
                 p: 3,
                 '& img': {
+                    display: 'block',
                     maxWidth: '100%',
                     borderRadius: 1,
                     border: '1px solid',
@@ -56,7 +58,22 @@ export function MarkdownTab({ paper, markdown }: MarkdownTabProps) {
                 },
             }}
         >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown.markdown}</ReactMarkdown>
+            <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                    img: ({ src = '', alt = '', ...props }) => (
+                        <Box
+                            component="img"
+                            src={build_asset_url(src)}
+                            alt={alt}
+                            loading="lazy"
+                            {...props}
+                        />
+                    ),
+                }}
+            >
+                {markdown.markdown}
+            </ReactMarkdown>
         </Box>
     )
 }

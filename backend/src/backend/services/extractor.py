@@ -20,6 +20,7 @@ ABSTRACT_PATTERN = re.compile(
 )
 REFERENCE_SPLIT_PATTERN = re.compile(r"(?:^\s*\[\d+\]|\n\s*\[\d+\]|\n\s*\d+\.\s+)", re.MULTILINE)
 IMAGE_PATTERN = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<path>[^)]+)\)")
+NAME_TOKEN_PATTERN = re.compile(r"[A-Za-z]+")
 ORGANIZATION_KEYWORDS = (
     "inc",
     "corp",
@@ -203,6 +204,104 @@ def _reference_payloads(references: list[ParsedReference]) -> list[dict[str, obj
     ]
 
 
+def _dedupe_text_values(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        cleaned = " ".join(value.split()).strip()
+        if not cleaned:
+            continue
+        key = cleaned.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(cleaned)
+    return deduped
+
+
+def _name_tokens(value: str) -> list[str]:
+    return [token.casefold() for token in NAME_TOKEN_PATTERN.findall(value)]
+
+
+def _given_names_compatible(seed_tokens: list[str], grobid_tokens: list[str]) -> bool:
+    if not seed_tokens or not grobid_tokens:
+        return True
+
+    if set(seed_tokens) & set(grobid_tokens):
+        return True
+
+    return any(
+        seed_token[0] == grobid_token[0] and (len(seed_token) == 1 or len(grobid_token) == 1)
+        for seed_token in seed_tokens
+        for grobid_token in grobid_tokens
+    )
+
+
+def _author_names_compatible(seed_name: str, grobid_name: str) -> bool:
+    seed_tokens = _name_tokens(seed_name)
+    grobid_tokens = _name_tokens(grobid_name)
+    if not seed_tokens or not grobid_tokens:
+        return False
+
+    if seed_tokens == grobid_tokens:
+        return True
+
+    if len(seed_tokens) == 1 or len(grobid_tokens) == 1:
+        return seed_tokens[-1] == grobid_tokens[-1]
+
+    seed_surname = seed_tokens[-1]
+    grobid_surname = grobid_tokens[-1]
+    if seed_surname != grobid_surname:
+        return False
+
+    return _given_names_compatible(seed_tokens[:-1], grobid_tokens[:-1])
+
+
+def _merge_seed_and_grobid_authors(
+    seed_authors: list[ParsedAuthor], grobid_authors: list[ParsedAuthor]
+) -> list[ParsedAuthor] | None:
+    if not grobid_authors:
+        return None
+
+    if not seed_authors:
+        return [
+            ParsedAuthor(
+                full_name=author.full_name.strip(),
+                given_name=author.given_name,
+                surname=author.surname,
+                affiliations=_dedupe_text_values(author.affiliations),
+                email=author.email,
+            )
+            for author in grobid_authors
+            if author.full_name.strip()
+        ]
+
+    if len(seed_authors) != len(grobid_authors):
+        return None
+
+    merged_authors: list[ParsedAuthor] = []
+    for seed_author, grobid_author in zip(seed_authors, grobid_authors, strict=False):
+        seed_name = seed_author.full_name.strip()
+        grobid_name = grobid_author.full_name.strip()
+        if not seed_name or not grobid_name:
+            return None
+
+        if not _author_names_compatible(seed_name, grobid_name):
+            return None
+
+        merged_authors.append(
+            ParsedAuthor(
+                full_name=seed_name,
+                given_name=grobid_author.given_name or seed_author.given_name,
+                surname=grobid_author.surname or seed_author.surname,
+                affiliations=_dedupe_text_values([*seed_author.affiliations, *grobid_author.affiliations]),
+                email=grobid_author.email or seed_author.email,
+            )
+        )
+
+    return merged_authors
+
+
 def _rewrite_image_links(markdown_text: str, image_dir: Path, repo_root: Path) -> str:
     def replacer(match: re.Match[str]) -> str:
         original_path = match.group("path").strip()
@@ -251,12 +350,12 @@ def extract_pdf(seed: PaperSeed) -> ExtractedPaper:
     heuristic_abstract = _extract_abstract(rewritten_markdown, front_matter_text)
     heuristic_affiliations = _extract_affiliations(front_matter_text)
     heuristic_references = _reference_objects(_extract_references(rewritten_markdown))
-    fallback_authors = _parse_seed_authors(seed.authors_text)
+    seed_authors = _parse_seed_authors(seed.authors_text)
 
     grobid_result = process_fulltext_document(pdf_path)
     tei_relative_path: str | None = None
     title = seed.title
-    authors = fallback_authors
+    authors = seed_authors
     authors_text = seed.authors_text
     abstract = heuristic_abstract
     affiliations = heuristic_affiliations
@@ -273,8 +372,10 @@ def extract_pdf(seed: PaperSeed) -> ExtractedPaper:
         if document.title:
             title = document.title
         if document.authors:
-            authors = document.authors
-            authors_text = _authors_text(document.authors, seed.authors_text)
+            merged_authors = _merge_seed_and_grobid_authors(seed_authors, document.authors)
+            if merged_authors is not None:
+                authors = merged_authors
+                authors_text = seed.authors_text.strip() or _authors_text(merged_authors, seed.authors_text)
         if document.abstract:
             abstract = document.abstract
         if document.affiliations:

@@ -84,23 +84,6 @@ export function ChatPanel({
                         ))
                     )}
                 </Stack>
-                <Stack direction="row" spacing={1} mt={2} flexWrap="wrap" useFlexGap>
-                    {default_prompts.map((prompt) => (
-                        <Chip
-                            key={prompt.command}
-                            label={prompt.command}
-                            size="small"
-                            clickable={!is_loading}
-                            color="secondary"
-                            variant="outlined"
-                            onClick={() => {
-                                if (!is_loading) {
-                                    void on_submit(prompt.command)
-                                }
-                            }}
-                        />
-                    ))}
-                </Stack>
             </Box>
 
             <Divider />

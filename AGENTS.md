@@ -8,7 +8,7 @@ This file is the handoff guide for future AI coding agents.
 Build and maintain a web app that:
 
 - downloads DVCon papers from `https://dvcon-proceedings.org/`
-- stores raw PDFs under `paper/`
+- stores raw PDFs under `data/paper/`
 - extracts markdown, images, and metadata under `data/`
 - supports keyword search and semantic search
 - supports grounded chat over selected papers
@@ -35,7 +35,7 @@ Build and maintain a web app that:
 ## Key Product Requirements
 
 - Only index DVCon items whose detail page says `Type: Paper` and `Format: pdf`.
-- Save PDFs at `paper/{year}/{location}/{slug}.pdf`.
+- Save PDFs at `data/paper/{year}/{location}/{slug}.pdf`.
 - Save markdown at `data/markdown/{year}/{location}/{slug}.md`.
 - Save extracted images at `data/markdown/{year}/{location}/images/{slug}/`.
 - Save raw GROBID TEI at `data/tei/{year}/{location}/{slug}.tei.xml` when available.
@@ -83,9 +83,9 @@ Build and maintain a web app that:
 - `CONTRIBUTION.md`: contributor workflow and open source etiquette guide
 - `scripts/`: local startup scripts for bash and PowerShell
 - `compose.yaml`: repo-managed app + GROBID runtime stack
-- `paper/`: raw downloaded papers
-- `data/`: extracted markdown tree, TEI cache, DB, Chroma, model cache
-- `example/`: checked-in Horace Chan sample corpus mirroring the `paper/` and extracted `data/` layout without local DB/vector artifacts
+- `data/paper/`: raw downloaded papers
+- `data/`: runtime corpus data root containing downloaded PDFs, extracted markdown, TEI cache, DB, Chroma, and model cache
+- `data.example/`: checked-in Horace Chan sample corpus mirroring the curated `data/` content layout without local DB/vector artifacts
 
 ## Backend API Surface
 
@@ -137,8 +137,11 @@ Build and maintain a web app that:
   - `OPENAI_BASE_URL`
   - `OPENAI_API_KEY`
   - `OPENAI_CHAT_MODEL`
+- Current default chat model: `gpt-5-mini`
 - Docker-compose host port key:
   - `APP_HOST_PORT`
+- Runtime data root key:
+  - `DATA_DIR`
 - GROBID-related keys:
   - `GROBID_ENABLED`
   - `GROBID_URL`
@@ -185,12 +188,13 @@ Verified:
 - semantic search returns results after reindex
 - local manifest-based reindex completed for 37 downloaded papers with `BAAI/bge-m3`
 - local corpus was later reset and rebuilt as a fresh 10-paper 2025 test set
-- all 7 DVCon paper records authored by Horace Chan were then downloaded and added to the local corpus, bringing the current local total to 17 indexed papers
-- a checked-in example corpus was created under `example/` containing the 7 Horace Chan PDFs plus extracted markdown, TEI, and image assets
+- all 8 DVCon paper records authored by Horace Chan were then downloaded and added to the local corpus, bringing the current local total to 18 indexed papers
+- a checked-in example corpus was created under `data.example/` containing the 8 Horace Chan PDFs plus extracted markdown, TEI, and image assets
+- live `/summarize` chat requests now succeed against the configured `gpt-5-mini` OpenAI-compatible endpoint after removing the unsupported hard-coded `temperature` parameter
 
 ## Important Gotchas
 
-- `paper/` and `data/` are intentionally gitignored and may be empty in git status even after ingestion.
+- `data/` is intentionally gitignored and may be empty in git status even after ingestion.
 - `frontend/.env.local` is gitignored and contains the local backend URL override.
 - New extractions place images under the markdown tree at `data/markdown/{year}/{location}/images/{slug}/`.
 - New GROBID TEI files are stored under `data/tei/{year}/{location}/`.
@@ -199,20 +203,24 @@ Verified:
 - The frontend now uses a draggable desktop split between the left paper workspace and the right chat panel.
 - The title bar subtitle emphasizes corpus counts inline instead of using title-bar chips.
 - The search tab keeps its controls fixed while the result list itself scrolls.
-- The chat panel exposes `/help`, `/clear`, and `/summarize` as quick prompts; `/clear` should always return the panel to the help display.
-- The current local corpus is not year-pure anymore: it contains the 10-paper 2025 test set plus 7 Horace Chan papers from 2012-2019.
-- The checked-in `example/paper/` and `example/data/` trees are a curated sample corpus and should not be confused with the gitignored runtime `paper/` and `data/` directories.
+- The chat panel still supports typed `/help`, `/clear`, and `/summarize` commands, but the top-of-panel quick-prompt chips were removed from the right panel UI; `/clear` should always return the panel to the help display.
+- The PDF tab uses compact page navigation controls and now exposes PDF download via a small outlined icon-only button that shares the same styling and fixed button dimensions as the `<` and `>` pager controls beside the next-page `>` control instead of a separate `Open PDF` text button.
+- The Markdown tab rewrites extracted image URLs against the configured backend API origin so inline diagrams load correctly during frontend dev on `5173` as well as when served by the backend in production.
+- The current local corpus is not year-pure anymore: it contains the 10-paper 2025 test set plus 8 Horace Chan papers from 2012-2022.
+- The checked-in `data.example/` tree is a curated sample corpus and should not be confused with the gitignored runtime `data/` directory.
 - `scripts/start_backend.*` and `scripts/start_all.*` are expected to bring up GROBID automatically.
 - `scripts/start_grobid.*` should wait for `http://127.0.0.1:8070/api/isalive` to return `true`.
 - `docker compose up --build` is the default container path and should start both `app` and `grobid`.
 - On machines without the Docker Compose plugin, the startup scripts should fall back to `docker-compose`.
 - The compose app should publish to host port `8011` by default via `APP_HOST_PORT`, while the backend still listens on its internal `PORT`.
+- The compose app mounts `${DATA_DIR}` on both the host and container sides, defaulting to `data`.
 - The repo default embedding model is `BAAI/bge-m3`, and the local `.env` is now aligned with that default.
 - If semantic search suddenly fails after changing embedding model or dimension, force a reindex. The collection reset logic should handle most cases.
 - `pymupdf4llm` emits a layout suggestion warning; this is informational, not a failure.
 - GROBID is expected at `http://127.0.0.1:8070` by default when running locally on the host.
 - The repo-managed sidecar defaults to `grobid/grobid:0.8.2-crf` because it is the safest cross-platform choice, especially on Windows hosts.
 - Hugging Face may warn about symlink caching on Windows. This is expected unless Windows Developer Mode is enabled.
+- Some OpenAI-compatible providers used with `gpt-5-mini` reject the `temperature` parameter on the Responses API; keep the chat request payload free of hard-coded temperature overrides unless the target model explicitly supports them.
 
 ## Runbook
 
@@ -272,6 +280,6 @@ uv run --project backend pytest
 ## Safety Notes
 
 - Do not overwrite `.env` unless the user explicitly asks.
-- Do not delete `paper/` or `data/` unless the user explicitly asks.
+- Do not delete `data/` or `data.example/` unless the user explicitly asks.
 - Do not revert unrelated git changes.
 - Prefer incremental fixes over broad refactors because the app is already end-to-end functional.

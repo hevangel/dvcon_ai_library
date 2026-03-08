@@ -85,7 +85,6 @@ def answer_question(messages: list[dict[str, str]], selected_paper_ids: list[int
     response = client.responses.create(
         model=settings.openai_chat_model,
         input=prompt,
-        temperature=0.2,
     )
 
     answer = getattr(response, "output_text", "").strip() or "No response generated."
