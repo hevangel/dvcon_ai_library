@@ -3,8 +3,9 @@ from fastapi.testclient import TestClient
 from backend.main import app
 from backend.services.embeddings import resolve_embedding_device
 from backend.services.extractor import _extract_abstract, _extract_affiliations, _extract_references
-from backend.services.indexer import _chunk_markdown
+from backend.services.indexer import _chunk_markdown, _dedupe_authors
 from backend.services.scraper import _parse_detail_text_map
+from backend.services.tei_parser import ParsedAuthor
 
 
 def test_health_endpoint_returns_ok() -> None:
@@ -91,3 +92,17 @@ def test_chunking_and_device_resolution_are_stable(monkeypatch) -> None:
     assert chunks
     assert chunks[0]["heading"] == "Introduction"
     assert device == "cpu"
+
+
+def test_dedupe_authors_merges_duplicate_grobid_entries() -> None:
+    authors = [
+        ParsedAuthor(full_name="Alice Example", affiliations=["Company A"]),
+        ParsedAuthor(full_name="Bob Example", affiliations=["Company B"]),
+        ParsedAuthor(full_name="alice example", affiliations=["Company C"], email="alice@example.com"),
+    ]
+
+    deduped = _dedupe_authors(authors)
+
+    assert [author.full_name for author in deduped] == ["Alice Example", "Bob Example"]
+    assert deduped[0].affiliations == ["Company A", "Company C"]
+    assert deduped[0].email == "alice@example.com"

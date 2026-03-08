@@ -33,6 +33,7 @@ Implemented:
 - local startup scripts in `scripts/`
 - `Dockerfile`
 - `compose.yaml` for the full app + GROBID container stack
+- `CONTRIBUTION.md`
 - `README.md`
 - `AGENTS.md`
 
@@ -42,6 +43,10 @@ Notes:
 - A local dev override file `frontend/.env.local` is used for frontend-to-backend API routing during development.
 - Local backend startup now brings up GROBID automatically by default.
 - Docker Compose now runs both the app container and the GROBID sidecar together.
+- Local and container startup now wait for GROBID readiness instead of only process launch.
+- The GROBID liveness probe was corrected to use `8070` rather than `8071`.
+- Docker Compose now publishes the app on host port `8011` by default to avoid conflict with the local backend on `8010`.
+- The local GROBID startup scripts now support both `docker compose` and legacy `docker-compose`.
 
 ### 2. Implement DVCon crawler and resumable PDF download into `paper/`
 
@@ -99,12 +104,15 @@ Implemented:
 Important update versus original plan:
 
 - semantic embeddings now use a local model instead of the OpenAI embeddings API
+- the repo default local embedding model is now `BAAI/bge-m3`
 - local model runs through `torch` and is CUDA-capable
 - CUDA was verified on this machine
 
 Notes:
 
 - Chroma collection reset logic is present to handle embedding model changes cleanly
+- switching from the prior `all-MiniLM-L6-v2` default requires a forced reindex because the dense vector dimension changes
+- duplicate GROBID author entries are now deduplicated before `PaperAuthor` rows are persisted
 - image storage is now directly colocated with the markdown tree; no backward-compatibility migration path remains in the extractor
 
 ### 5. Build the React UI with the four left-panel tabs and right-side chat
@@ -115,23 +123,27 @@ Implemented:
 
 - professional title bar
 - live subtitle counts for papers, years, and conference collections
-- left/right split layout
+- bold inline count emphasis in the subtitle instead of title-bar chips
+- resizable left/right split layout on desktop
 - left panel tabs:
   - Search Results
   - PDF
   - Markdown
   - Metadata Graph
 - search results with:
-  - query input
+  - polished query input and filter container styling
   - keyword / semantic / hybrid mode selector
   - year filter
   - location filter
   - checkbox multi-select
+  - independent result-list scrolling inside the left panel
 - click-on-paper behavior that activates the paper and switches to the PDF tab
 - markdown rendering with embedded extracted images
 - graph view using Cytoscape
 - right-side chat panel with:
   - transcript
+  - quick prompts for `/help`, `/clear`, and `/summarize`
+  - command-aware help display that returns after `/clear`
   - Enter to submit
   - Shift+Enter for newline
   - submit button
@@ -222,7 +234,9 @@ Verified:
 
 - CUDA available to PyTorch
 - current GPU detected: NVIDIA GeForce RTX 3060 Ti
-- embedding generation works and returns 384-dim vectors
+- the previous local embedding configuration generated 384-dim vectors
+- the current Chroma collection metadata now reports `BAAI/bge-m3`
+- the local `.env` was updated to `BAAI/bge-m3` so future restarts stay aligned with the rebuilt index
 
 ## Current Verified Progress
 
@@ -234,6 +248,8 @@ These items were explicitly verified during implementation:
 - one live DVCon paper was ingested successfully
 - extracted content was indexed into SQLite and Chroma
 - semantic API search returned the ingested paper
+- local manifest-based reindex completed successfully for 37 downloaded papers using `BAAI/bge-m3`
+- old local ingest artifacts were cleared and replaced with a fresh 10-paper 2025 test corpus
 
 ## Known Gaps and Risks
 

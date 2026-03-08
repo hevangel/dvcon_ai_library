@@ -14,9 +14,16 @@ import { useState } from 'react'
 
 import type { ChatCitation, ChatMessage, SearchResultItem } from '../types/api'
 
+const default_prompts = [
+    { command: '/help', description: 'Show chat commands and usage tips.' },
+    { command: '/clear', description: 'Clear the conversation and return to help.' },
+    { command: '/summarize', description: 'Summarize the current paper scope in 2-3 paragraphs.' },
+]
+
 interface ChatPanelProps {
     messages: ChatMessage[]
     citations: ChatCitation[]
+    show_help: boolean
     is_loading: boolean
     selected_papers: SearchResultItem[]
     error_message?: string
@@ -26,6 +33,7 @@ interface ChatPanelProps {
 export function ChatPanel({
     messages,
     citations,
+    show_help,
     is_loading,
     selected_papers,
     error_message,
@@ -76,12 +84,50 @@ export function ChatPanel({
                         ))
                     )}
                 </Stack>
+                <Stack direction="row" spacing={1} mt={2} flexWrap="wrap" useFlexGap>
+                    {default_prompts.map((prompt) => (
+                        <Chip
+                            key={prompt.command}
+                            label={prompt.command}
+                            size="small"
+                            clickable={!is_loading}
+                            color="secondary"
+                            variant="outlined"
+                            onClick={() => {
+                                if (!is_loading) {
+                                    void on_submit(prompt.command)
+                                }
+                            }}
+                        />
+                    ))}
+                </Stack>
             </Box>
 
             <Divider />
 
             <Stack spacing={2} sx={{ flex: 1, overflow: 'auto', p: 2.5, backgroundColor: '#f8fafc' }}>
-                {messages.length === 0 ? (
+                {show_help ? (
+                    <Alert severity="info" sx={{ alignItems: 'flex-start' }}>
+                        <Stack spacing={1}>
+                            <Typography variant="subtitle2" fontWeight={700}>
+                                Chat commands
+                            </Typography>
+                            {default_prompts.map((prompt) => (
+                                <Typography key={prompt.command} variant="body2">
+                                    <Box component="span" sx={{ fontFamily: 'monospace', fontWeight: 700 }}>
+                                        {prompt.command}
+                                    </Box>{' '}
+                                    {prompt.description}
+                                </Typography>
+                            ))}
+                            <Typography variant="body2">
+                                Ask normal questions too, such as "Compare the selected papers on formal sign-off."
+                            </Typography>
+                        </Stack>
+                    </Alert>
+                ) : null}
+
+                {messages.length === 0 && !show_help ? (
                     <Alert severity="info">
                         Start with a question such as “Summarize the verification methodology” or “Compare the selected papers on formal sign-off.”
                     </Alert>

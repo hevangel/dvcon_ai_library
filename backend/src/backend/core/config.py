@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     grobid_url: str = "http://127.0.0.1:8070"
     grobid_timeout_seconds: int = 180
 
-    local_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    local_embedding_model: str = "BAAI/bge-m3"
     local_embedding_device: str = "cuda"
     local_embedding_batch_size: int = 16
 

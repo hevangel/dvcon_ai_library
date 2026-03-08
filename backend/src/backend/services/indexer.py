@@ -157,13 +157,53 @@ def _get_or_create_affiliation(session: Session, affiliation_name: str) -> Affil
     return affiliation
 
 
+def _dedupe_authors(authors: list[ParsedAuthor]) -> list[ParsedAuthor]:
+    deduped: list[ParsedAuthor] = []
+    index_by_name: dict[str, int] = {}
+
+    for author in authors:
+        author_name = author.full_name.strip()
+        if not author_name:
+            continue
+
+        key = author_name.casefold()
+        existing_index = index_by_name.get(key)
+        if existing_index is None:
+            deduped.append(
+                ParsedAuthor(
+                    full_name=author_name,
+                    given_name=author.given_name,
+                    surname=author.surname,
+                    affiliations=list(dict.fromkeys(affiliation for affiliation in author.affiliations if affiliation)),
+                    email=author.email,
+                )
+            )
+            index_by_name[key] = len(deduped) - 1
+            continue
+
+        existing_author = deduped[existing_index]
+        merged_affiliations = list(
+            dict.fromkeys(
+                [
+                    *existing_author.affiliations,
+                    *(affiliation for affiliation in author.affiliations if affiliation),
+                ]
+            )
+        )
+        existing_author.affiliations = merged_affiliations
+        if not existing_author.email and author.email:
+            existing_author.email = author.email
+
+    return deduped
+
+
 def _sync_authors(session: Session, paper: Paper, authors: list[ParsedAuthor], affiliations: list[str]) -> None:
     session.exec(delete(PaperAuthor).where(PaperAuthor.paper_id == paper.id))
     session.exec(delete(AuthorAffiliation).where(AuthorAffiliation.paper_id == paper.id))
     session.flush()
 
     default_company = affiliations[0] if affiliations else None
-    for index, parsed_author in enumerate(authors):
+    for index, parsed_author in enumerate(_dedupe_authors(authors)):
         author_name = parsed_author.full_name.strip()
         if not author_name:
             continue

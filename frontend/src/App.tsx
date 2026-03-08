@@ -1,19 +1,19 @@
 import {
     AppBar,
     Box,
-    Chip,
     CircularProgress,
-    Grid,
+    useMediaQuery,
     Paper,
     Stack,
     Tab,
     Tabs,
     Toolbar,
     Typography,
+    useTheme,
 } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
     fetch_graph,
@@ -31,11 +31,17 @@ import { SearchResultsTab } from './components/search_results_tab'
 import type { ChatMessage, ChatCitation, SearchMode, SearchResultItem } from './types/api'
 
 function App() {
+    const theme = useTheme()
+    const is_desktop = useMediaQuery(theme.breakpoints.up('lg'))
+    const layout_ref = useRef<HTMLDivElement | null>(null)
     const [active_tab, set_active_tab] = useState(0)
     const [active_paper_id, set_active_paper_id] = useState<number | null>(null)
     const [selected_paper_ids, set_selected_paper_ids] = useState<number[]>([])
+    const [left_panel_width, set_left_panel_width] = useState(58)
+    const [is_resizing, set_is_resizing] = useState(false)
     const [chat_messages, set_chat_messages] = useState<ChatMessage[]>([])
     const [chat_citations, set_chat_citations] = useState<ChatCitation[]>([])
+    const [show_chat_help, set_show_chat_help] = useState(true)
     const [chat_error, set_chat_error] = useState<string | undefined>(undefined)
     const [chat_loading, set_chat_loading] = useState(false)
     const [search_request, set_search_request] = useState<{
@@ -116,10 +122,86 @@ function App() {
         return papers
     }, [active_scope_paper_ids, paper_query.data, search_results])
 
+    useEffect(() => {
+        if (!is_desktop) {
+            set_is_resizing(false)
+        }
+    }, [is_desktop])
+
+    useEffect(() => {
+        if (!is_desktop || !is_resizing) {
+            return
+        }
+
+        function handle_mouse_move(event: MouseEvent) {
+            const layout = layout_ref.current
+            if (!layout) {
+                return
+            }
+
+            const bounds = layout.getBoundingClientRect()
+            const next_width = ((event.clientX - bounds.left) / bounds.width) * 100
+            const clamped_width = Math.min(70, Math.max(32, next_width))
+            set_left_panel_width(clamped_width)
+        }
+
+        function handle_mouse_up() {
+            set_is_resizing(false)
+        }
+
+        document.body.style.cursor = 'col-resize'
+        document.body.style.userSelect = 'none'
+        window.addEventListener('mousemove', handle_mouse_move)
+        window.addEventListener('mouseup', handle_mouse_up)
+
+        return () => {
+            document.body.style.cursor = ''
+            document.body.style.userSelect = ''
+            window.removeEventListener('mousemove', handle_mouse_move)
+            window.removeEventListener('mouseup', handle_mouse_up)
+        }
+    }, [is_desktop, is_resizing])
+
+    function resolve_chat_prompt(message: string) {
+        const trimmed_message = message.trim()
+        const lower_message = trimmed_message.toLowerCase()
+
+        if (lower_message === '/summarize') {
+            return active_scope_paper_ids.length > 0
+                ? 'Summarize the selected paper context in 2-3 paragraphs. Focus on the problem, the proposed approach, and the main verification or design takeaways.'
+                : 'Summarize the most relevant DVCon paper context in 2-3 paragraphs. Focus on the problem, the proposed approach, and the main verification or design takeaways.'
+        }
+
+        return trimmed_message
+    }
+
     async function handle_chat_submit(message: string) {
+        const trimmed_message = message.trim()
+        const lower_message = trimmed_message.toLowerCase()
+        if (!trimmed_message) {
+            return
+        }
+
+        if (lower_message === '/help') {
+            set_chat_error(undefined)
+            set_show_chat_help(true)
+            return
+        }
+
+        if (lower_message === '/clear') {
+            set_chat_messages([])
+            set_chat_citations([])
+            set_chat_error(undefined)
+            set_chat_loading(false)
+            set_show_chat_help(true)
+            return
+        }
+
+        const resolved_message = resolve_chat_prompt(trimmed_message)
         set_chat_loading(true)
         set_chat_error(undefined)
-        const next_messages = [...chat_messages, { role: 'user', content: message } satisfies ChatMessage]
+        set_show_chat_help(false)
+        const next_messages = [...chat_messages, { role: 'user', content: resolved_message } satisfies ChatMessage]
         set_chat_messages(next_messages)
 
         try {
@@ -152,28 +234,56 @@ function App() {
                             DVCon Proceedings Intelligence Portal
                         </Typography>
                         <Typography variant="body1" sx={{ maxWidth: 980, opacity: 0.92 }}>
-                            {stats_query.data
-                                ? `Search across ${stats_query.data.paper_count} papers spanning ${stats_query.data.year_count} years and ${stats_query.data.conference_count} conference collections with keyword, semantic, and grounded chat workflows.`
-                                : 'Search DVCon papers, inspect primary sources, and chat with grounded paper context.'}
+                            {stats_query.data ? (
+                                <>
+                                    Search across{' '}
+                                    <Box component="span" sx={{ fontWeight: 800, color: 'common.white' }}>
+                                        {stats_query.data.paper_count} papers
+                                    </Box>{' '}
+                                    spanning{' '}
+                                    <Box component="span" sx={{ fontWeight: 800, color: 'common.white' }}>
+                                        {stats_query.data.year_count} years
+                                    </Box>{' '}
+                                    and{' '}
+                                    <Box component="span" sx={{ fontWeight: 800, color: 'common.white' }}>
+                                        {stats_query.data.conference_count} conference collections
+                                    </Box>{' '}
+                                    with keyword, semantic, and grounded chat workflows.
+                                </>
+                            ) : (
+                                'Search DVCon papers, inspect primary sources, and chat with grounded paper context.'
+                            )}
                         </Typography>
-                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                            <Chip label={`${stats_query.data?.paper_count ?? '--'} papers`} color="primary" variant="filled" />
-                            <Chip label={`${stats_query.data?.year_count ?? '--'} years`} color="primary" variant="filled" />
-                            <Chip label={`${stats_query.data?.conference_count ?? '--'} conferences`} color="primary" variant="filled" />
-                        </Stack>
                     </Stack>
                 </Toolbar>
             </AppBar>
 
             <Box sx={{ p: 2.5 }}>
-                <Grid container spacing={2.5} sx={{ minHeight: 'calc(100vh - 170px)' }}>
-                    <Grid size={{ xs: 12, lg: 7 }}>
+                <Box
+                    ref={layout_ref}
+                    sx={{
+                        display: 'flex',
+                        flexDirection: { xs: 'column', lg: 'row' },
+                        gap: { xs: 2.5, lg: 0 },
+                        minHeight: 'calc(100vh - 170px)',
+                        height: { xs: 'auto', lg: 'calc(100vh - 170px)' },
+                    }}
+                >
+                    <Box
+                        sx={{
+                            width: { xs: '100%', lg: `calc(${left_panel_width}% - 6px)` },
+                            minWidth: 0,
+                            display: 'flex',
+                        }}
+                    >
                         <Paper
                             elevation={0}
                             sx={{
                                 display: 'flex',
                                 flexDirection: 'column',
                                 height: '100%',
+                                width: '100%',
+                                overflow: 'hidden',
                                 border: '1px solid',
                                 borderColor: 'divider',
                                 borderRadius: 3,
@@ -191,7 +301,7 @@ function App() {
                                 <Tab label="Metadata Graph" />
                             </Tabs>
 
-                            <Box sx={{ p: 2.5, flex: 1, minHeight: 0 }}>
+                            <Box sx={{ p: 2.5, flex: 1, minHeight: 0, overflow: 'hidden' }}>
                                 {active_tab === 0 ? (
                                     <SearchResultsTab
                                         stats={stats_query.data}
@@ -223,19 +333,49 @@ function App() {
                                 {active_tab === 3 ? <GraphTab paper={paper_query.data} graph={graph_query.data} /> : null}
                             </Box>
                         </Paper>
-                    </Grid>
+                    </Box>
 
-                    <Grid size={{ xs: 12, lg: 5 }}>
+                    {is_desktop ? (
+                        <Box
+                            role="separator"
+                            aria-orientation="vertical"
+                            onMouseDown={() => set_is_resizing(true)}
+                            sx={{
+                                flex: '0 0 12px',
+                                width: 12,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'col-resize',
+                            }}
+                        >
+                            <Box
+                                sx={{
+                                    width: 4,
+                                    height: '100%',
+                                    borderRadius: 999,
+                                    backgroundColor: is_resizing ? 'primary.main' : 'divider',
+                                    transition: 'background-color 0.2s ease',
+                                    '&:hover': {
+                                        backgroundColor: 'primary.light',
+                                    },
+                                }}
+                            />
+                        </Box>
+                    ) : null}
+
+                    <Box sx={{ flex: 1, minWidth: 0, display: 'flex' }}>
                         <ChatPanel
                             messages={chat_messages}
                             citations={chat_citations}
+                            show_help={show_chat_help}
                             is_loading={chat_loading}
                             error_message={chat_error}
                             selected_papers={selected_papers}
                             on_submit={handle_chat_submit}
                         />
-                    </Grid>
-                </Grid>
+                    </Box>
+                </Box>
             </Box>
 
             {(stats_query.isLoading || search_query.isLoading) && (

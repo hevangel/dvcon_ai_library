@@ -80,6 +80,7 @@ Build and maintain a web app that:
 - `frontend/src/App.tsx`: main UI shell
 - `frontend/src/components/`: tab and panel components
 - `frontend/src/api/client.ts`: frontend API client
+- `CONTRIBUTION.md`: contributor workflow and open source etiquette guide
 - `scripts/`: local startup scripts for bash and PowerShell
 - `compose.yaml`: repo-managed app + GROBID runtime stack
 - `paper/`: raw downloaded papers
@@ -112,6 +113,7 @@ Build and maintain a web app that:
 - If GROBID is enabled and reachable, the extractor prefers GROBID title, abstract, structured authors, affiliations, and references.
 - Local startup scripts should assume GROBID is part of the normal runtime, not an extra optional step.
 - If GROBID is unavailable or errors, the extractor falls back to the existing heuristic metadata extraction without failing the ingest.
+- Duplicate structured author entries from GROBID are deduplicated by normalized author name before `PaperAuthor` rows are written.
 - Structured affiliations are persisted alongside the existing flattened `affiliations_text` field.
 - Structured references are persisted alongside the existing flattened `references_text` field.
 
@@ -121,8 +123,8 @@ Build and maintain a web app that:
 - Local model is configured in `.env` via:
   - `LOCAL_EMBEDDING_MODEL`
   - `LOCAL_EMBEDDING_DEVICE`
-- Current default model: `sentence-transformers/all-MiniLM-L6-v2`
-- Current vector dimension: `384`
+- Current default model: `BAAI/bge-m3`
+- Expected vector dimension after reindex: `1024`
 - `backend/src/backend/services/indexer.py` resets the Chroma collection if the embedding model changes, to avoid dimension mismatch with old vectors.
 - CUDA is available on this machine and should be preferred.
 
@@ -134,6 +136,8 @@ Build and maintain a web app that:
   - `OPENAI_BASE_URL`
   - `OPENAI_API_KEY`
   - `OPENAI_CHAT_MODEL`
+- Docker-compose host port key:
+  - `APP_HOST_PORT`
 - GROBID-related keys:
   - `GROBID_ENABLED`
   - `GROBID_URL`
@@ -155,6 +159,8 @@ Implemented:
 
 - backend scaffold and API
 - frontend shell and tabbed layout
+- resizable left/right frontend split layout
+- frontend chat command prompts and help display
 - DVCon crawler and resumable download manifest
 - PDF extraction to markdown and colocated image export
 - hybrid metadata persistence with optional GROBID enrichment
@@ -164,6 +170,7 @@ Implemented:
 - grounded chat integration
 - Dockerfile
 - repo-managed `compose.yaml` full app + GROBID stack
+- contributor guide in `CONTRIBUTION.md`
 - local run scripts
 - smoke tests
 
@@ -175,6 +182,8 @@ Verified:
 - live ingest of at least one DVCon paper succeeded
 - local embeddings run on CUDA
 - semantic search returns results after reindex
+- local manifest-based reindex completed for 37 downloaded papers with `BAAI/bge-m3`
+- local corpus was later reset and rebuilt as a fresh 10-paper 2025 test set
 
 ## Important Gotchas
 
@@ -184,8 +193,16 @@ Verified:
 - New GROBID TEI files are stored under `data/tei/{year}/{location}/`.
 - The backend serves built frontend assets from `frontend/dist` in production mode.
 - During development, Vite serves the frontend separately.
+- The frontend now uses a draggable desktop split between the left paper workspace and the right chat panel.
+- The title bar subtitle emphasizes corpus counts inline instead of using title-bar chips.
+- The search tab keeps its controls fixed while the result list itself scrolls.
+- The chat panel exposes `/help`, `/clear`, and `/summarize` as quick prompts; `/clear` should always return the panel to the help display.
 - `scripts/start_backend.*` and `scripts/start_all.*` are expected to bring up GROBID automatically.
+- `scripts/start_grobid.*` should wait for `http://127.0.0.1:8070/api/isalive` to return `true`.
 - `docker compose up --build` is the default container path and should start both `app` and `grobid`.
+- On machines without the Docker Compose plugin, the startup scripts should fall back to `docker-compose`.
+- The compose app should publish to host port `8011` by default via `APP_HOST_PORT`, while the backend still listens on its internal `PORT`.
+- The repo default embedding model is `BAAI/bge-m3`, and the local `.env` is now aligned with that default.
 - If semantic search suddenly fails after changing embedding model or dimension, force a reindex. The collection reset logic should handle most cases.
 - `pymupdf4llm` emits a layout suggestion warning; this is informational, not a failure.
 - GROBID is expected at `http://127.0.0.1:8070` by default when running locally on the host.
@@ -241,6 +258,7 @@ uv run --project backend pytest
 - If resuming after a crash, first verify backend health on `http://127.0.0.1:8010/api/health`.
 - If metadata quality looks weaker than expected, verify the GROBID sidecar is running and `GROBID_ENABLED=true`.
 - For containerized runs, prefer `docker compose up --build` over manually wiring `docker run` commands.
+- If `docker compose up --build` appears stuck at startup, check the GROBID liveness probe on `http://127.0.0.1:8070/api/isalive`.
 - Confirm frontend dev server target still matches `frontend/.env.local`.
 - If chat fails, verify `.env` still contains valid `OPENAI_BASE_URL` and `OPENAI_API_KEY`.
 - If semantic results are empty after corpus changes, run a forced ingest to rebuild embeddings.
