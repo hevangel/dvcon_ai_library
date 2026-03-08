@@ -224,7 +224,7 @@ CPU core in the simulator or running on a 3rd party Instruction
 
 
 
-![](/assets/data.example/markdown/2012/united states/images/hardware-software-co-verification-using-specman-and-systemc-with-tlm-ports/hardware-software-co-verification-using-specman-and-systemc-with-tlm-ports.pdf-1-1.png)
+![](images/hardware-software-co-verification-using-specman-and-systemc-with-tlm-ports/hardware-software-co-verification-using-specman-and-systemc-with-tlm-ports.pdf-1-1.png)
 
 
 
@@ -354,7 +354,7 @@ under the same memory space.  By wrapping the Specman-C
 
 
 
-![](/assets/data.example/markdown/2012/united states/images/hardware-software-co-verification-using-specman-and-systemc-with-tlm-ports/hardware-software-co-verification-using-specman-and-systemc-with-tlm-ports.pdf-2-0.png)
+![](images/hardware-software-co-verification-using-specman-and-systemc-with-tlm-ports/hardware-software-co-verification-using-specman-and-systemc-with-tlm-ports.pdf-2-0.png)
 
 
 

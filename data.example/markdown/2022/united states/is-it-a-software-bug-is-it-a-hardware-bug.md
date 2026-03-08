@@ -59,7 +59,7 @@ assertions don’t lie. At the end of day, if we spend enough time investigating
 conclusive answer on whether it is a software bug, a hardware bug, or a new “feature”.
 
 
-![](/assets/data.example/markdown/2022/united states/images/is-it-a-software-bug-is-it-a-hardware-bug/is-it-a-software-bug-is-it-a-hardware-bug.pdf-1-0.png)
+![](images/is-it-a-software-bug-is-it-a-hardware-bug/is-it-a-software-bug-is-it-a-hardware-bug.pdf-1-0.png)
 
 
 
@@ -141,7 +141,7 @@ testcase.
 
 
 
-![](/assets/data.example/markdown/2022/united states/images/is-it-a-software-bug-is-it-a-hardware-bug/is-it-a-software-bug-is-it-a-hardware-bug.pdf-2-0.png)
+![](images/is-it-a-software-bug-is-it-a-hardware-bug/is-it-a-software-bug-is-it-a-hardware-bug.pdf-2-0.png)
 
 
 |Uvm log util|TB|
@@ -220,7 +220,7 @@ simulation runs much slower than usual.
 
 
 
-![](/assets/data.example/markdown/2022/united states/images/is-it-a-software-bug-is-it-a-hardware-bug/is-it-a-software-bug-is-it-a-hardware-bug.pdf-3-0.png)
+![](images/is-it-a-software-bug-is-it-a-hardware-bug/is-it-a-software-bug-is-it-a-hardware-bug.pdf-3-0.png)
 
 
 

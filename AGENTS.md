@@ -205,7 +205,8 @@ Verified:
 - The search tab keeps its controls fixed while the result list itself scrolls.
 - The chat panel still supports typed `/help`, `/clear`, and `/summarize` commands, but the top-of-panel quick-prompt chips were removed from the right panel UI; `/clear` should always return the panel to the help display.
 - The PDF tab uses compact page navigation controls and now exposes PDF download via a small outlined icon-only button that shares the same styling and fixed button dimensions as the `<` and `>` pager controls beside the next-page `>` control instead of a separate `Open PDF` text button.
-- The Markdown tab rewrites extracted image URLs against the configured backend API origin so inline diagrams load correctly during frontend dev on `5173` as well as when served by the backend in production.
+- Extracted markdown now stores image references as markdown-relative `images/...` paths so VS Code preview works against the local filesystem.
+- The Markdown tab resolves those relative image links through the configured backend asset origin so inline diagrams load correctly during frontend dev on `5173` as well as when served by the backend in production.
 - The current local corpus is not year-pure anymore: it contains the 10-paper 2025 test set plus 8 Horace Chan papers from 2012-2022.
 - The checked-in `data.example/` tree is a curated sample corpus and should not be confused with the gitignored runtime `data/` directory.
 - `scripts/start_backend.*` and `scripts/start_all.*` are expected to bring up GROBID automatically.

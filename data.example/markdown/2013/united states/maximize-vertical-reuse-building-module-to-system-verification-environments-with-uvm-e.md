@@ -270,9 +270,9 @@ Figure 2 shows a system UVC that imports two module
 
 
 
-![](/assets/data.example/markdown/2013/united states/images/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e.pdf-1-0.png)
+![](images/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e.pdf-1-0.png)
 
-![](/assets/data.example/markdown/2013/united states/images/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e.pdf-1-1.png)
+![](images/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e.pdf-1-1.png)
 
 
 
@@ -363,7 +363,7 @@ in. The channel is fetched from within the transaction using a
 
 
 
-![](/assets/data.example/markdown/2013/united states/images/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e.pdf-2-0.png)
+![](images/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e.pdf-2-0.png)
 
 
 
@@ -609,7 +609,7 @@ TABLE I. VERITICAL REUSE STATISITC
 
 
 
-![](/assets/data.example/markdown/2013/united states/images/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e.pdf-4-0.png)
+![](images/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e/maximize-vertical-reuse-building-module-to-system-verification-environments-with-uvm-e.pdf-4-0.png)
 
 
 

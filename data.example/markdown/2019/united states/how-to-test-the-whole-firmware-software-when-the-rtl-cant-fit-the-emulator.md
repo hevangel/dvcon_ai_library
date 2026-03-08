@@ -1,4 +1,4 @@
-![](/assets/data.example/markdown/2019/united states/images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-0-0.png)
+![](images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-0-0.png)
 ## How to test the whole firmware/software when the RTL can’t fit the emulator
 
 
@@ -69,7 +69,7 @@ the RTL size problem and outline their drawbacks. Then we will present the workf
 Simulator (HSWSIM) and its benefits. We will go over the two use modes of the HSWSIM: 1) how to test nontiming critical FW code running in the Linux user space; 2) how to test the FW code running in the Linux kernel
 
 
-![](/assets/data.example/markdown/2019/united states/images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-1-0.png)
+![](images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-1-0.png)
 
 space and how to stress test the performance of the FW. Finally, we will discuss future improvements planned and
 share our success story on pre-silicon FW/SW testing.
@@ -129,9 +129,9 @@ highly intrusive to the FW code base. It creates a maintenance nightmare later i
 proven to be unscalable to a larger design
 
 
-![](/assets/data.example/markdown/2019/united states/images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-2-0.png)
+![](images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-2-0.png)
 
-![](/assets/data.example/markdown/2019/united states/images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-2-1.png)
+![](images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-2-1.png)
 
 
 
@@ -206,7 +206,7 @@ test the FW in embedded CPU later in the project cycle without incurring the ove
 platform environment.
 
 
-![](/assets/data.example/markdown/2019/united states/images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-3-0.png)
+![](images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-3-0.png)
 
 _._
 
@@ -234,7 +234,7 @@ register access log through the built-in logging feature available within the lo
 
 
 
-![](/assets/data.example/markdown/2019/united states/images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-3-1.png)
+![](images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-3-1.png)
 
 
 
@@ -247,7 +247,7 @@ register access log through the built-in logging feature available within the lo
 
 
 
-![](/assets/data.example/markdown/2019/united states/images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-3-2.png)
+![](images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-3-2.png)
 
 
 
@@ -286,7 +286,7 @@ simulation. The x86 Linux host already has a connection to the device through th
 host has the same visibility into the device address space as the embedded CPU. The only difference is that the
 
 
-![](/assets/data.example/markdown/2019/united states/images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-4-0.png)
+![](images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-4-0.png)
 
 embedded CPU uses a different address mapping than the PCIe address window. The HSWSIM has two main
 functions when it receives a FW register access from the TCP socket. First it needs to determine whether the
@@ -351,7 +351,7 @@ embedded CPU to sleep.
 Figure 3. Use Mode on Testing FW (User Space)
 
 
-![](/assets/data.example/markdown/2019/united states/images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-5-0.png)
+![](images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-5-0.png)
 
 There are two major advantages in this approach in debugging the user space FW code. First, running the FW
 code on the x86 Linux host is a lot more convenient to debug than running it in the embedded CPU. The crossplatform debug turnaround time is slow in the latter setup. After fixing a bug in the C code, not only we have to
@@ -415,7 +415,7 @@ HW
 Figure 4. Use Mode on Testing FW (Kernel Space)
 
 
-![](/assets/data.example/markdown/2019/united states/images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-6-0.png)
+![](images/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator/how-to-test-the-whole-firmware-software-when-the-rtl-cant-fit-the-emulator.pdf-6-0.png)
 
 Debugging the kernel space FW in this use mode is pretty much the same as debugging it in the actual silicon.
 We used the same debugging techniques, such as outputting printk to the UART interface, hooking up the

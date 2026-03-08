@@ -16,6 +16,31 @@ const backend_base_url = /^https?:\/\//.test(api_base_url)
     ? api_base_url.replace(/\/api\/?$/, '')
     : ''
 
+function join_url_path(...parts: string[]): string {
+    return parts
+        .filter(Boolean)
+        .map((part, index) => (index === 0 ? part.replace(/\/+$/, '') : part.replace(/^\/+|\/+$/g, '')))
+        .join('/')
+}
+
+function resolve_markdown_asset_path(asset_url: string, markdown_path?: string): string {
+    if (asset_url.startsWith('/')) {
+        return asset_url
+    }
+
+    const normalized_asset_url = asset_url.replace(/^[.][\\/]/, '').replace(/\\/g, '/')
+    const normalized_markdown_path = markdown_path?.replace(/\\/g, '/')
+    const markdown_dir = normalized_markdown_path?.includes('/')
+        ? normalized_markdown_path.slice(0, normalized_markdown_path.lastIndexOf('/'))
+        : ''
+
+    if (!markdown_dir) {
+        return normalized_asset_url
+    }
+
+    return `/assets/${encodeURI(join_url_path(markdown_dir, normalized_asset_url))}`
+}
+
 export const api_client = axios.create({
     baseURL: api_base_url,
 })
@@ -24,20 +49,22 @@ export function build_pdf_url(paper_id: number): string {
     return `${api_base_url}/papers/${paper_id}/pdf`
 }
 
-export function build_asset_url(asset_url: string): string {
+export function build_asset_url(asset_url: string, markdown_path?: string): string {
     if (!asset_url || /^([a-z]+:)?\/\//i.test(asset_url) || asset_url.startsWith('data:')) {
         return asset_url
     }
 
+    const resolved_asset_url = resolve_markdown_asset_path(asset_url, markdown_path)
+
     if (!backend_base_url) {
-        return asset_url
+        return resolved_asset_url
     }
 
-    if (asset_url.startsWith('/')) {
-        return `${backend_base_url}${asset_url}`
+    if (resolved_asset_url.startsWith('/')) {
+        return `${backend_base_url}${resolved_asset_url}`
     }
 
-    return `${backend_base_url}/${asset_url}`
+    return `${backend_base_url}/${resolved_asset_url}`
 }
 
 export async function fetch_stats(): Promise<StatsResponse> {

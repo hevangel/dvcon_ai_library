@@ -76,7 +76,8 @@ Implemented:
 - image extraction to `data/markdown/{year}/{location}/images/{slug}/`
 - markdown storage at `data/markdown/{year}/{location}/{slug}.md`
 - optional TEI export at `data/tei/{year}/{location}/{slug}.tei.xml`
-- image link rewriting to backend-served `/assets/...`
+- markdown image links rewritten to relative `images/...` paths so local VS Code preview works
+- frontend markdown rendering resolves those relative image links through the backend asset route during app usage
 - hybrid metadata extraction:
   - markdown and images from `PyMuPDF` / `pymupdf4llm`
   - title, abstract, authors, affiliations, and references enriched from local GROBID when available
@@ -140,7 +141,7 @@ Implemented:
   - independent result-list scrolling inside the left panel
 - click-on-paper behavior that activates the paper and switches to the PDF tab
 - PDF download moved to a compact outlined icon-only button beside the next-page control, using the same styling and fixed dimensions as the pager buttons instead of a separate `Open PDF` button
-- Markdown-tab diagrams now resolve asset URLs against the backend origin so extracted inline images render correctly during local Vite development
+- Markdown-tab diagrams now resolve markdown-relative image links through the backend asset route so extracted inline images render correctly during local Vite development and when served by the backend
 - markdown rendering with embedded extracted images
 - graph view using Cytoscape
 - right-side chat panel with:

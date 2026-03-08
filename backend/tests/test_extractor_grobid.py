@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import fitz
 
-from backend.services.extractor import extract_pdf
+from backend.services.extractor import _rewrite_image_links, extract_pdf
 from backend.services.grobid import GrobidResult
 from backend.services.scraper import PaperSeed
 from backend.services.tei_parser import ParsedAuthor, ParsedReference, ParsedTeiDocument
@@ -114,3 +114,18 @@ def test_extract_pdf_falls_back_when_grobid_is_unavailable(monkeypatch, tmp_path
     assert "fallback abstract line one" in extracted.abstract.lower()
     assert extracted.tei_path is None
     assert extracted.references[0].citation_text == "Example Reference Entry."
+
+
+def test_rewrite_image_links_uses_markdown_relative_paths(tmp_path) -> None:
+    markdown_dir = tmp_path / "data" / "markdown" / "2025" / "us"
+    image_dir = markdown_dir / "images" / "sample-paper"
+    image_dir.mkdir(parents=True, exist_ok=True)
+    (image_dir / "sample-paper.pdf-0-0.png").write_bytes(b"png")
+
+    rewritten = _rewrite_image_links(
+        "![](sample-paper.pdf-0-0.png)",
+        image_dir=image_dir,
+        markdown_dir=markdown_dir,
+    )
+
+    assert rewritten == "![](images/sample-paper/sample-paper.pdf-0-0.png)"

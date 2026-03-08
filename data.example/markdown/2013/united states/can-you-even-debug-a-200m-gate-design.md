@@ -250,7 +250,7 @@ keep cp_simtime == 100000; // in ns
 ```
 
 
-![](/assets/data.example/markdown/2013/united states/images/can-you-even-debug-a-200m-gate-design/can-you-even-debug-a-200m-gate-design.pdf-1-0.png)
+![](images/can-you-even-debug-a-200m-gate-design/can-you-even-debug-a-200m-gate-design.pdf-1-0.png)
 
 
 
@@ -545,7 +545,7 @@ time.
 
 
 
-![](/assets/data.example/markdown/2013/united states/images/can-you-even-debug-a-200m-gate-design/can-you-even-debug-a-200m-gate-design.pdf-3-0.png)
+![](images/can-you-even-debug-a-200m-gate-design/can-you-even-debug-a-200m-gate-design.pdf-3-0.png)
 As an experiment to further speed up the simulation, we
 considered compiling all constraints and sequences once they
 became stable. However since the bulk of the loaded code

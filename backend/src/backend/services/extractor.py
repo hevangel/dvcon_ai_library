@@ -302,7 +302,7 @@ def _merge_seed_and_grobid_authors(
     return merged_authors
 
 
-def _rewrite_image_links(markdown_text: str, image_dir: Path, repo_root: Path) -> str:
+def _rewrite_image_links(markdown_text: str, image_dir: Path, markdown_dir: Path) -> str:
     def replacer(match: re.Match[str]) -> str:
         original_path = match.group("path").strip()
         filename = Path(original_path).name
@@ -310,8 +310,8 @@ def _rewrite_image_links(markdown_text: str, image_dir: Path, repo_root: Path) -
         if not absolute_path.exists():
             return match.group(0)
 
-        relative_path = absolute_path.relative_to(repo_root).as_posix()
-        return f"![{match.group('alt')}]" f"(/assets/{relative_path})"
+        relative_path = absolute_path.relative_to(markdown_dir).as_posix()
+        return f"![{match.group('alt')}]({relative_path})"
 
     return IMAGE_PATTERN.sub(replacer, markdown_text)
 
@@ -344,7 +344,7 @@ def extract_pdf(seed: PaperSeed) -> ExtractedPaper:
             show_progress=False,
         )
 
-    rewritten_markdown = _rewrite_image_links(markdown_text, image_dir, settings.repo_root)
+    rewritten_markdown = _rewrite_image_links(markdown_text, image_dir, markdown_path.parent)
     markdown_path.write_text(rewritten_markdown, encoding="utf-8")
 
     heuristic_abstract = _extract_abstract(rewritten_markdown, front_matter_text)

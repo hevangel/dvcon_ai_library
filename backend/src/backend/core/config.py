@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_chat_model: str = "gpt-5-mini"
 
+    dvcon_request_delay_seconds: float = 1.0
+    dvcon_max_retries: int = 2
+    dvcon_retry_backoff_seconds: float = 2.0
+
     grobid_enabled: bool = True
     grobid_url: str = "http://127.0.0.1:8070"
     grobid_timeout_seconds: int = 180

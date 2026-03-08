@@ -64,7 +64,7 @@ export function MarkdownTab({ paper, markdown }: MarkdownTabProps) {
                     img: ({ src = '', alt = '', ...props }) => (
                         <Box
                             component="img"
-                            src={build_asset_url(src)}
+                            src={build_asset_url(src, markdown.markdown_path)}
                             alt={alt}
                             loading="lazy"
                             {...props}
