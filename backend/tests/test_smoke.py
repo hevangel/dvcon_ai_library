@@ -9,7 +9,7 @@ from backend.services.embeddings import resolve_embedding_device
 from backend.services.extractor import _extract_abstract, _extract_affiliations, _extract_references
 from backend.services.indexer import SearchHit
 from backend.services.indexer import _chunk_markdown, _dedupe_authors
-from backend.services.scraper import _parse_detail_text_map
+from backend.services.scraper import _parse_detail_text_map, fetch_document_urls
 from backend.services.tei_parser import ParsedAuthor
 
 
@@ -48,6 +48,80 @@ def test_parse_detail_text_map_extracts_expected_fields() -> None:
     assert parsed["year"] == "2025"
     assert parsed["type"] == "Paper"
     assert parsed["format"] == "pdf"
+
+
+def test_fetch_document_urls_uses_homepage_archive_filters(monkeypatch) -> None:
+    class FakeResponse:
+        def __init__(self, text: str, status_code: int = 200) -> None:
+            self.text = text
+            self.status_code = status_code
+
+        def raise_for_status(self) -> None:
+            if self.status_code >= 400:
+                raise RuntimeError(f"HTTP {self.status_code}")
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def get(self, url: str) -> FakeResponse:
+            responses = {
+                "https://dvcon-proceedings.org/": FakeResponse(
+                    """
+                    <html>
+                        <body>
+                            <select name="ptp_filter_event_year">
+                                <option value="">Year</option>
+                                <option value="y2024">2024</option>
+                            </select>
+                            <select name="ptp_filter_event_location">
+                                <option value="">Location</option>
+                                <option value="united-states">United States</option>
+                            </select>
+                        </body>
+                    </html>
+                    """
+                ),
+                "https://dvcon-proceedings.org/event_year/y2024/": FakeResponse(
+                    """
+                    <html>
+                        <body>
+                            <a href="https://dvcon-proceedings.org/document/legacy-paper/">Legacy</a>
+                            <a href="https://dvcon-proceedings.org/document/recent-us-paper/">Recent US</a>
+                        </body>
+                    </html>
+                    """
+                ),
+                "https://dvcon-proceedings.org/event_year/y2024/page/2/": FakeResponse("", status_code=404),
+                "https://dvcon-proceedings.org/event_location/united-states/": FakeResponse(
+                    """
+                    <html>
+                        <body>
+                            <a href="https://dvcon-proceedings.org/document/recent-us-paper/">Recent US</a>
+                            <a href="https://dvcon-proceedings.org/document/second-recent-us-paper/">Second Recent US</a>
+                        </body>
+                    </html>
+                    """
+                ),
+                "https://dvcon-proceedings.org/event_location/united-states/page/2/": FakeResponse("", status_code=404),
+            }
+            response = responses.get(url)
+            if response is None:
+                raise AssertionError(f"Unexpected URL fetched: {url}")
+            return response
+
+    monkeypatch.setattr("backend.services.scraper._http_client", lambda: FakeClient())
+
+    urls = fetch_document_urls()
+
+    assert urls == [
+        "https://dvcon-proceedings.org/document/legacy-paper/",
+        "https://dvcon-proceedings.org/document/recent-us-paper/",
+        "https://dvcon-proceedings.org/document/second-recent-us-paper/",
+    ]
 
 
 def test_extractor_helpers_parse_metadata_sections() -> None:
@@ -263,3 +337,115 @@ def test_answer_question_includes_selected_scope_in_prompt(monkeypatch) -> None:
     assert "Selected Paper One (2024, United States)" in str(captured_request["input"])
     assert "Selected Paper Two (2025, India)" in str(captured_request["input"])
     assert "the two papers" in str(captured_request["input"])
+
+
+def test_answer_question_uses_full_selected_paper_context_when_it_fits(monkeypatch) -> None:
+    captured_request: dict[str, object] = {}
+
+    class FakeResponses:
+        def create(self, **kwargs: object):
+            captured_request.update(kwargs)
+            return SimpleNamespace(output_text="Full paper comparison ready.")
+
+    class FakeOpenAI:
+        def __init__(self, *, api_key: str, base_url: str) -> None:
+            self.responses = FakeResponses()
+
+    paper = Paper(
+        id=31,
+        source_url="https://example.com/paper-31",
+        pdf_url="https://example.com/paper-31.pdf",
+        slug="paper-31",
+        title="Full Context Paper",
+        year=2025,
+        location="United States",
+        abstract="A compact abstract.",
+        pdf_path="data/paper/2025/united states/paper-31.pdf",
+    )
+    hits = [SearchHit(paper=paper, score=1.0, snippet="Fallback snippet.")]
+    chunks = [
+        SimpleNamespace(chunk_index=0, heading="Introduction", text="Intro text.", chroma_id="chunk-0"),
+        SimpleNamespace(chunk_index=1, heading="Results", text="Results text.", chroma_id="chunk-1"),
+    ]
+
+    monkeypatch.setattr(
+        "backend.services.chat.get_settings",
+        lambda: SimpleNamespace(
+            chat_is_configured=True,
+            openai_api_key="test-key",
+            openai_base_url="https://example.invalid/v1",
+            openai_chat_model="gpt-5-mini",
+            openai_chat_model_context_window=4096,
+            chat_context_output_reserve_tokens=256,
+            chunk_overlap=200,
+        ),
+    )
+    monkeypatch.setattr("backend.services.chat._context_hits", lambda question, selected_paper_ids: hits)
+    monkeypatch.setattr("backend.services.chat.get_paper_chunks", lambda paper_id: chunks)
+    monkeypatch.setattr("backend.services.chat.OpenAI", FakeOpenAI)
+
+    answer = answer_question(
+        messages=[{"role": "user", "content": "Compare the selected paper to itself."}],
+        selected_paper_ids=[paper.id],
+    )
+
+    assert answer.answer == "Full paper comparison ready."
+    assert "Full selected paper content:" in str(captured_request["input"])
+    assert "Introduction:" in str(captured_request["input"])
+    assert "Results:" in str(captured_request["input"])
+
+
+def test_answer_question_falls_back_to_selected_sections_when_full_text_does_not_fit(monkeypatch) -> None:
+    captured_request: dict[str, object] = {}
+
+    class FakeResponses:
+        def create(self, **kwargs: object):
+            captured_request.update(kwargs)
+            return SimpleNamespace(output_text="Section-only comparison ready.")
+
+    class FakeOpenAI:
+        def __init__(self, *, api_key: str, base_url: str) -> None:
+            self.responses = FakeResponses()
+
+    paper = Paper(
+        id=32,
+        source_url="https://example.com/paper-32",
+        pdf_url="https://example.com/paper-32.pdf",
+        slug="paper-32",
+        title="Large Context Paper",
+        year=2025,
+        location="India",
+        abstract="A compact abstract.",
+        pdf_path="data/paper/2025/india/paper-32.pdf",
+    )
+    hits = [SearchHit(paper=paper, score=1.0, snippet="Fallback snippet.")]
+    large_chunk = "Large section text. " * 400
+    chunks = [
+        SimpleNamespace(chunk_index=0, heading="Introduction", text=large_chunk, chroma_id="chunk-0"),
+        SimpleNamespace(chunk_index=1, heading="Results", text=large_chunk, chroma_id="chunk-1"),
+    ]
+
+    monkeypatch.setattr(
+        "backend.services.chat.get_settings",
+        lambda: SimpleNamespace(
+            chat_is_configured=True,
+            openai_api_key="test-key",
+            openai_base_url="https://example.invalid/v1",
+            openai_chat_model="gpt-5-mini",
+            openai_chat_model_context_window=512,
+            chat_context_output_reserve_tokens=256,
+            chunk_overlap=200,
+        ),
+    )
+    monkeypatch.setattr("backend.services.chat._context_hits", lambda question, selected_paper_ids: hits)
+    monkeypatch.setattr("backend.services.chat.get_paper_chunks", lambda paper_id: chunks)
+    monkeypatch.setattr("backend.services.chat.OpenAI", FakeOpenAI)
+
+    answer = answer_question(
+        messages=[{"role": "user", "content": "Compare the selected paper to itself."}],
+        selected_paper_ids=[paper.id],
+    )
+
+    assert answer.answer == "Section-only comparison ready."
+    assert "Selected paper sections:" in str(captured_request["input"])
+    assert "Full selected paper content:" not in str(captured_request["input"])

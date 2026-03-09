@@ -5,7 +5,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
-from xml.etree import ElementTree
 
 import httpx
 from bs4 import BeautifulSoup
@@ -14,8 +13,8 @@ from slugify import slugify
 from backend.core.config import get_settings
 
 
-SITEMAP_TEMPLATE = "https://dvcon-proceedings.org/wp-sitemap-posts-dlp_document-{page}.xml"
 DVCON_BASE_URL = "https://dvcon-proceedings.org/"
+ARCHIVE_HOME_URL = DVCON_BASE_URL
 
 
 @dataclass(slots=True)
@@ -94,32 +93,74 @@ def _http_client() -> httpx.Client:
     )
 
 
-def _extract_urls_from_sitemap(xml_content: str) -> list[str]:
-    root = ElementTree.fromstring(xml_content)
-    namespace = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
-    return [node.text for node in root.findall(".//s:loc", namespace) if node.text]
+def _archive_document_urls(client: httpx.Client, archive_url: str) -> list[str]:
+    document_urls: list[str] = []
+    seen_urls: set[str] = set()
+
+    for page in range(1, 100):
+        page_url = archive_url if page == 1 else urljoin(archive_url.rstrip("/") + "/", f"page/{page}/")
+        response = client.get(page_url)
+        if response.status_code == 404:
+            break
+
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        page_document_urls = [
+            urljoin(DVCON_BASE_URL, anchor.get("href", ""))
+            for anchor in soup.find_all("a", href=True)
+            if "/document/" in anchor.get("href", "")
+        ]
+
+        new_urls = [url for url in page_document_urls if url not in seen_urls]
+        if not new_urls:
+            break
+
+        document_urls.extend(new_urls)
+        seen_urls.update(new_urls)
+
+    return document_urls
+
+
+def _homepage_archive_urls(client: httpx.Client) -> list[str]:
+    response = client.get(ARCHIVE_HOME_URL)
+    response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    archive_urls: list[str] = []
+
+    filter_specs = (
+        ("select", {"name": "ptp_filter_event_year"}, "event_year"),
+        ("select", {"name": "ptp_filter_event_location"}, "event_location"),
+    )
+    for tag_name, attrs, path_prefix in filter_specs:
+        select = soup.find(tag_name, attrs=attrs)
+        if select is None:
+            continue
+
+        for option in select.find_all("option"):
+            option_value = option.get("value", "").strip()
+            if not option_value:
+                continue
+            archive_url = urljoin(DVCON_BASE_URL, f"{path_prefix}/{option_value}/")
+            if archive_url not in archive_urls:
+                archive_urls.append(archive_url)
+
+    return archive_urls
 
 
 def fetch_document_urls(limit: int | None = None) -> list[str]:
     urls: list[str] = []
+    seen_urls: set[str] = set()
 
     with _http_client() as client:
-        page = 1
-        while True:
-            response = client.get(SITEMAP_TEMPLATE.format(page=page))
-            if response.status_code == 404:
-                break
-
-            response.raise_for_status()
-            page_urls = _extract_urls_from_sitemap(response.text)
-            if not page_urls:
-                break
-
-            urls.extend(page_urls)
-            if limit is not None and len(urls) >= limit:
-                return urls[:limit]
-
-            page += 1
+        for archive_url in _homepage_archive_urls(client):
+            for page_url in _archive_document_urls(client, archive_url):
+                if page_url in seen_urls:
+                    continue
+                seen_urls.add(page_url)
+                urls.append(page_url)
+                if limit is not None and len(urls) >= limit:
+                    return urls[:limit]
 
     return urls
 

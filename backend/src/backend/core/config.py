@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     openai_base_url: str | None = None
     openai_api_key: str | None = None
     openai_chat_model: str = "gpt-5-mini"
+    openai_chat_model_context_window: int | None = None
+    chat_context_output_reserve_tokens: int = 12000
 
     dvcon_request_delay_seconds: float = 1.0
     dvcon_max_retries: int = 2

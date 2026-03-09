@@ -137,6 +137,8 @@ Build and maintain a web app that:
   - `OPENAI_BASE_URL`
   - `OPENAI_API_KEY`
   - `OPENAI_CHAT_MODEL`
+ - `OPENAI_CHAT_MODEL_CONTEXT_WINDOW`
+ - `CHAT_CONTEXT_OUTPUT_RESERVE_TOKENS`
 - Current default chat model: `gpt-5-mini`
 - Docker-compose host port key:
   - `APP_HOST_PORT`
@@ -192,6 +194,8 @@ Verified:
 - a checked-in example corpus was created under `data.example/` containing the 8 Horace Chan PDFs plus extracted markdown, TEI, and image assets
 - live `/summarize` chat requests now succeed against the configured `gpt-5-mini` OpenAI-compatible endpoint after removing the unsupported hard-coded `temperature` parameter
 - selected-paper chat requests now preserve the chosen paper scope for generic prompts like "compare the two papers" instead of falling back to unrelated corpus-wide search results
+- selected-paper chat now estimates prompt tokens against the configured chat model context window and sends full selected paper text when it fits; otherwise it falls back to curated sections
+- scraper URL discovery now uses the human-facing archive UI by reading the homepage Year and Location filters and crawling those archive pages directly, instead of relying on the incomplete WordPress document sitemap path
 
 ## Important Gotchas
 
@@ -227,6 +231,8 @@ Verified:
 - The repo-managed sidecar defaults to `grobid/grobid:0.8.2-crf` because it is the safest cross-platform choice, especially on Windows hosts.
 - Hugging Face may warn about symlink caching on Windows. This is expected unless Windows Developer Mode is enabled.
 - Some OpenAI-compatible providers used with `gpt-5-mini` reject the `temperature` parameter on the Responses API; keep the chat request payload free of hard-coded temperature overrides unless the target model explicitly supports them.
+- Full selected-paper chat uses an approximate token estimate plus a configurable context-window override; if a provider exposes a smaller or larger limit than the repo default, set `OPENAI_CHAT_MODEL_CONTEXT_WINDOW` explicitly.
+- Do not trust the WordPress document sitemap as the primary corpus discovery source. The live site UI exposes newer papers through the homepage filters and archive pages even when the document sitemap path is incomplete or truncated.
 
 ## Runbook
 
