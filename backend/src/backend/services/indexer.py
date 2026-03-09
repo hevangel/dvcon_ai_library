@@ -3,9 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import re
+import time
 from typing import Any
 
 import chromadb
+from sqlalchemy.exc import OperationalError
 from sqlalchemy import delete, text
 from sqlmodel import Session, select
 
@@ -25,6 +27,10 @@ from backend.services.embeddings import embed_texts
 from backend.services.extractor import extract_pdf
 from backend.services.scraper import PaperSeed, crawl_archive
 from backend.services.tei_parser import ParsedAuthor, ParsedReference
+
+
+DATABASE_LOCK_RETRY_ATTEMPTS = 5
+DATABASE_LOCK_RETRY_SECONDS = 5
 
 
 @dataclass(slots=True)
@@ -383,11 +389,63 @@ def index_seed(seed: PaperSeed) -> Paper:
         return paper
 
 
+def _is_sqlite_database_locked(error: OperationalError) -> bool:
+    return "database is locked" in str(error).lower()
+
+
+def _derived_artifact_exists(relative_path: str | None) -> bool:
+    if not relative_path:
+        return False
+
+    settings = get_settings()
+    return (settings.repo_root / relative_path).exists()
+
+
+def _paper_needs_ingestion(session: Session, seed: PaperSeed) -> bool:
+    paper = session.exec(select(Paper).where(Paper.source_url == seed.source_url)).first()
+    if paper is None:
+        return True
+
+    if paper.last_ingested_at is None:
+        return True
+
+    if not _derived_artifact_exists(paper.pdf_path):
+        return True
+
+    if not _derived_artifact_exists(paper.markdown_path):
+        return True
+
+    tracked_fields = (
+        paper.pdf_url != seed.pdf_url,
+        paper.slug != seed.slug,
+        paper.title != seed.title,
+        paper.year != seed.year,
+        paper.location != seed.location,
+        paper.document_type != seed.document_type,
+        paper.authors_text != seed.authors_text,
+        paper.pdf_path != seed.pdf_path,
+    )
+    return any(tracked_fields)
+
+
 def run_ingestion(*, limit: int | None = None, force: bool = False) -> list[Paper]:
     seeds = crawl_archive(limit=limit, force=force)
+    if force:
+        seeds_to_index = seeds
+    else:
+        with Session(engine) as session:
+            seeds_to_index = [seed for seed in seeds if _paper_needs_ingestion(session, seed)]
+
     papers: list[Paper] = []
-    for seed in seeds:
-        papers.append(index_seed(seed))
+    for seed in seeds_to_index:
+        for attempt in range(DATABASE_LOCK_RETRY_ATTEMPTS + 1):
+            try:
+                papers.append(index_seed(seed))
+                break
+            except OperationalError as error:
+                if not _is_sqlite_database_locked(error) or attempt >= DATABASE_LOCK_RETRY_ATTEMPTS:
+                    raise
+                time.sleep(DATABASE_LOCK_RETRY_SECONDS * (attempt + 1))
     return papers
 
 

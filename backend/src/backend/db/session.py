@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlmodel import Session, SQLModel, create_engine
 
 from backend.core.config import get_settings
@@ -11,8 +11,18 @@ from backend.core.config import get_settings
 settings = get_settings()
 engine = create_engine(
     settings.database_url,
-    connect_args={"check_same_thread": False},
+    connect_args={
+        "check_same_thread": False,
+        "timeout": 60,
+    },
 )
+
+
+@event.listens_for(engine, "connect")
+def _configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA busy_timeout = 60000")
+    cursor.close()
 
 
 def _existing_columns(session: Session, table_name: str) -> set[str]:

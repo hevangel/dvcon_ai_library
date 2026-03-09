@@ -65,7 +65,7 @@ Build and maintain a web app that:
 - `backend/src/backend/db/models.py`: SQLModel schema
 - `backend/src/backend/db/session.py`: SQLite engine and FTS setup
 - `backend/src/backend/api/`: route layer and response schemas
-- `backend/src/backend/services/scraper.py`: DVCon sitemap crawl + PDF download
+- `backend/src/backend/services/scraper.py`: DVCon search-form crawl + PDF download
 - `backend/src/backend/services/extractor.py`: PDF to markdown/image/metadata extraction
 - `backend/src/backend/services/grobid.py`: GROBID REST client
 - `backend/src/backend/services/tei_parser.py`: TEI-to-structured-metadata parser
@@ -195,7 +195,7 @@ Verified:
 - live `/summarize` chat requests now succeed against the configured `gpt-5-mini` OpenAI-compatible endpoint after removing the unsupported hard-coded `temperature` parameter
 - selected-paper chat requests now preserve the chosen paper scope for generic prompts like "compare the two papers" instead of falling back to unrelated corpus-wide search results
 - selected-paper chat now estimates prompt tokens against the configured chat model context window and sends full selected paper text when it fits; otherwise it falls back to curated sections
-- scraper URL discovery now uses the human-facing archive UI by reading the homepage Year and Location filters and crawling those archive pages directly, instead of relying on the incomplete WordPress document sitemap path
+- scraper URL discovery now uses the live document search UI by reading the homepage Year and Location filters and posting those combinations through the human-facing search form, instead of relying on the incomplete WordPress document sitemap path
 
 ## Important Gotchas
 
@@ -232,7 +232,7 @@ Verified:
 - Hugging Face may warn about symlink caching on Windows. This is expected unless Windows Developer Mode is enabled.
 - Some OpenAI-compatible providers used with `gpt-5-mini` reject the `temperature` parameter on the Responses API; keep the chat request payload free of hard-coded temperature overrides unless the target model explicitly supports them.
 - Full selected-paper chat uses an approximate token estimate plus a configurable context-window override; if a provider exposes a smaller or larger limit than the repo default, set `OPENAI_CHAT_MODEL_CONTEXT_WINDOW` explicitly.
-- Do not trust the WordPress document sitemap as the primary corpus discovery source. The live site UI exposes newer papers through the homepage filters and archive pages even when the document sitemap path is incomplete or truncated.
+- Do not trust the WordPress document sitemap as the primary corpus discovery source. The live site UI exposes newer papers through the homepage filters and document search results even when the document sitemap path is incomplete or truncated.
 
 ## Runbook
 

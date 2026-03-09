@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
+import time
 from typing import Any
 from urllib.parse import urljoin
 
@@ -15,6 +16,9 @@ from backend.core.config import get_settings
 
 DVCON_BASE_URL = "https://dvcon-proceedings.org/"
 ARCHIVE_HOME_URL = DVCON_BASE_URL
+SEARCH_RESULTS_URL = urljoin(DVCON_BASE_URL, "document-search")
+HTTP_RETRY_ATTEMPTS = 5
+HTTP_RETRY_BACKOFF_SECONDS = 2
 
 
 @dataclass(slots=True)
@@ -93,59 +97,76 @@ def _http_client() -> httpx.Client:
     )
 
 
-def _archive_document_urls(client: httpx.Client, archive_url: str) -> list[str]:
-    document_urls: list[str] = []
-    seen_urls: set[str] = set()
+def _request_with_retries(client: httpx.Client, method: str, url: str, **kwargs: Any) -> httpx.Response:
+    request = getattr(client, method.lower())
+    retryable_status_codes = {429, 500, 502, 503, 504, 521, 522, 524}
 
-    for page in range(1, 100):
-        page_url = archive_url if page == 1 else urljoin(archive_url.rstrip("/") + "/", f"page/{page}/")
-        response = client.get(page_url)
-        if response.status_code == 404:
-            break
+    last_error: Exception | None = None
+    for attempt in range(HTTP_RETRY_ATTEMPTS):
+        try:
+            response = request(url, **kwargs)
+            if response.status_code in retryable_status_codes:
+                raise RuntimeError(f"Retryable HTTP status {response.status_code} for {url}")
+            return response
+        except (httpx.HTTPError, RuntimeError) as error:
+            last_error = error
+            if attempt >= HTTP_RETRY_ATTEMPTS - 1:
+                raise
+            time.sleep(HTTP_RETRY_BACKOFF_SECONDS * (attempt + 1))
 
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        page_document_urls = [
-            urljoin(DVCON_BASE_URL, anchor.get("href", ""))
-            for anchor in soup.find_all("a", href=True)
-            if "/document/" in anchor.get("href", "")
-        ]
-
-        new_urls = [url for url in page_document_urls if url not in seen_urls]
-        if not new_urls:
-            break
-
-        document_urls.extend(new_urls)
-        seen_urls.update(new_urls)
-
-    return document_urls
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"Request failed for {url}")
 
 
-def _homepage_archive_urls(client: httpx.Client) -> list[str]:
-    response = client.get(ARCHIVE_HOME_URL)
+def _homepage_filter_values(client: httpx.Client, select_name: str) -> list[str]:
+    response = _request_with_retries(client, "GET", ARCHIVE_HOME_URL)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
-    archive_urls: list[str] = []
+    select = soup.find("select", attrs={"name": select_name})
+    if select is None:
+        return []
 
-    filter_specs = (
-        ("select", {"name": "ptp_filter_event_year"}, "event_year"),
-        ("select", {"name": "ptp_filter_event_location"}, "event_location"),
+    values: list[str] = []
+    for option in select.find_all("option"):
+        option_value = option.get("value", "").strip()
+        if option_value and option_value not in values:
+            values.append(option_value)
+
+    return values
+
+
+def _search_form_document_urls(client: httpx.Client, year_value: str, location_value: str) -> list[str]:
+    response = _request_with_retries(
+        client,
+        "POST",
+        SEARCH_RESULTS_URL,
+        data={
+            "ptp_filter_event_year": year_value,
+            "ptp_filter_document_type": "paper",
+            "ptp_filter_event_location": location_value,
+            "textsearch": "",
+        },
     )
-    for tag_name, attrs, path_prefix in filter_specs:
-        select = soup.find(tag_name, attrs=attrs)
-        if select is None:
+    response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    document_urls: list[str] = []
+    for row in soup.select("table.posts-data-table tbody tr"):
+        anchor = row.select_one("td a[href]")
+        if anchor is None:
             continue
 
-        for option in select.find_all("option"):
-            option_value = option.get("value", "").strip()
-            if not option_value:
-                continue
-            archive_url = urljoin(DVCON_BASE_URL, f"{path_prefix}/{option_value}/")
-            if archive_url not in archive_urls:
-                archive_urls.append(archive_url)
+        document_url = urljoin(DVCON_BASE_URL, anchor.get("href", "").strip())
+        if not document_url or "/document/" not in document_url:
+            continue
+        if document_url in document_urls:
+            continue
 
-    return archive_urls
+        document_urls.append(document_url)
+
+    return document_urls
 
 
 def fetch_document_urls(limit: int | None = None) -> list[str]:
@@ -153,14 +174,21 @@ def fetch_document_urls(limit: int | None = None) -> list[str]:
     seen_urls: set[str] = set()
 
     with _http_client() as client:
-        for archive_url in _homepage_archive_urls(client):
-            for page_url in _archive_document_urls(client, archive_url):
-                if page_url in seen_urls:
-                    continue
-                seen_urls.add(page_url)
-                urls.append(page_url)
+        year_values = _homepage_filter_values(client, "ptp_filter_event_year")
+        location_values = _homepage_filter_values(client, "ptp_filter_event_location")
+
+        for year_value in year_values:
+            for location_value in location_values:
+                for page_url in _search_form_document_urls(client, year_value, location_value):
+                    if page_url in seen_urls:
+                        continue
+                    seen_urls.add(page_url)
+                    urls.append(page_url)
+                    if limit is not None and len(urls) >= limit:
+                        return urls[:limit]
+
                 if limit is not None and len(urls) >= limit:
-                    return urls[:limit]
+                    continue
 
     return urls
 
@@ -179,11 +207,30 @@ def _parse_detail_text_map(soup: BeautifulSoup) -> dict[str, str]:
     return data
 
 
+def _detail_page_has_downloadable_pdf(
+    document_type: str,
+    file_format: str,
+    download_url: str,
+) -> bool:
+    if document_type.strip().lower() != "paper":
+        return False
+
+    normalized_format = file_format.strip().lower()
+    if normalized_format == "pdf":
+        return True
+
+    normalized_download_url = download_url.strip().lower().split("?", 1)[0]
+    if not normalized_format and normalized_download_url.endswith(".pdf"):
+        return True
+
+    return False
+
+
 def parse_document_detail(source_url: str) -> PaperSeed | None:
     settings = get_settings()
 
     with _http_client() as client:
-        response = client.get(source_url)
+        response = _request_with_retries(client, "GET", source_url)
         response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
@@ -196,7 +243,11 @@ def parse_document_detail(source_url: str) -> PaperSeed | None:
 
     document_type = detail_map.get("type", "").strip()
     file_format = detail_map.get("format", "").strip().lower()
-    if document_type.lower() != "paper" or file_format != "pdf":
+    pdf_url = urljoin(DVCON_BASE_URL, download_anchor.get("href", ""))
+    if not pdf_url:
+        return None
+
+    if not _detail_page_has_downloadable_pdf(document_type, file_format, pdf_url):
         return None
 
     try:
@@ -210,10 +261,6 @@ def parse_document_detail(source_url: str) -> PaperSeed | None:
     paper_root = settings.paper_dir.relative_to(settings.repo_root)
     pdf_relative_path = paper_root / str(year) / location / f"{slug}.pdf"
     conference_name = f"DVCon {location.title()} {year}"
-
-    pdf_url = urljoin(DVCON_BASE_URL, download_anchor.get("href", ""))
-    if not pdf_url:
-        return None
 
     return PaperSeed(
         source_url=source_url,
@@ -239,7 +286,7 @@ def download_pdf(seed: PaperSeed, *, force: bool = False) -> Path:
         return target_path
 
     with _http_client() as client:
-        response = client.get(seed.pdf_url)
+        response = _request_with_retries(client, "GET", seed.pdf_url)
         response.raise_for_status()
         target_path.write_bytes(response.content)
 
@@ -260,19 +307,30 @@ def crawl_archive(*, limit: int | None = None, force: bool = False) -> list[Pape
         if record.get("seed") and target_exists and not force:
             seed = PaperSeed(**record["seed"])
         else:
-            seed = parse_document_detail(source_url)
-            manifest.update(source_url)
+            try:
+                seed = parse_document_detail(source_url)
+                manifest.update(source_url, error=None)
+            except Exception as error:
+                manifest.update(source_url, status="error", error=str(error))
+                manifest.save()
+                continue
 
         if seed is None:
-            manifest.update(source_url, status="skipped")
+            manifest.update(source_url, status="skipped", error=None)
             continue
 
-        pdf_path = download_pdf(seed, force=force)
+        try:
+            pdf_path = download_pdf(seed, force=force)
+        except Exception as error:
+            manifest.update(source_url, status="error", error=str(error), seed=asdict(seed))
+            manifest.save()
+            continue
         manifest.update(
             source_url,
             status="downloaded",
             pdf_path=pdf_path.relative_to(settings.repo_root).as_posix(),
             seed=asdict(seed),
+            error=None,
         )
         manifest.save()
 

@@ -55,7 +55,7 @@ Status: complete
 
 Implemented:
 
-- sitemap crawling from the DVCon WordPress sitemap
+- human-search-form crawling from the DVCon website UI
 - paper-only filtering based on detail-page metadata
 - direct PDF download
 - resumable manifest at `data/ingest_manifest.json`
@@ -64,6 +64,7 @@ Implemented:
 Notes:
 
 - The crawler uses a browser-like user agent to avoid DVCon `403` responses.
+- The crawler now treats the live document search UI as the authoritative discovery surface rather than the incomplete WordPress sitemap or archive-only paths.
 - The implementation intentionally skips non-paper DVCon items.
 
 ### 3. Implement PDF-to-markdown extraction, image export, and metadata normalization into `data/`
@@ -174,7 +175,7 @@ Implemented:
 - selected-paper fallback context that preserves the chosen scope for generic prompts like "compare the two papers"
 - selected-paper full-text escalation that estimates prompt tokens against the configured model context window and sends full selected paper content when it fits
 - title/year citation metadata returned to the UI
-- scraper URL discovery now uses the homepage Year and Location filters plus the corresponding human-facing archive pages, so ingestion no longer depends on the incomplete WordPress document sitemap path
+- scraper URL discovery now uses the homepage Year and Location filters plus the live human search form results, so ingestion no longer depends on the incomplete WordPress document sitemap path
 
 Validated:
 
@@ -184,13 +185,13 @@ Validated:
 - the chat service no longer hard-codes `temperature`, which previously caused `400` errors from providers that reject that Responses API parameter for this model
 - backend regression tests now cover generic compare prompts so scoped chat does not widen to unrelated papers when `selected_paper_ids` are present
 - backend regression tests now also cover full selected-paper prompt escalation vs fallback section mode based on context-window budget
-- backend smoke tests now cover the human-interface scraper path that reads homepage archive filters and crawls archive pages directly
+- backend smoke tests now cover the human-interface scraper path that reads homepage filters and posts through the document search form directly
 
 Notes:
 
 - local runtime needed a port move from `8000` to `8010` because another unrelated service was already using `8000`
 - the full-text escalation currently uses a conservative approximate token estimate and can be tuned per provider with `OPENAI_CHAT_MODEL_CONTEXT_WINDOW` and `CHAT_CONTEXT_OUTPUT_RESERVE_TOKENS`
-- the live DVCon WordPress document sitemap path is incomplete for current content, so the scraper now treats the visible archive UI as the authoritative discovery surface
+- the live DVCon WordPress document sitemap path is incomplete for current content, so the scraper now treats the visible document search UI as the authoritative discovery surface
 
 ### 7. Add smoke tests and basic validation for scrape, extract, search, and chat endpoints
 

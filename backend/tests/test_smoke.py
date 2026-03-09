@@ -9,7 +9,7 @@ from backend.services.embeddings import resolve_embedding_device
 from backend.services.extractor import _extract_abstract, _extract_affiliations, _extract_references
 from backend.services.indexer import SearchHit
 from backend.services.indexer import _chunk_markdown, _dedupe_authors
-from backend.services.scraper import _parse_detail_text_map, fetch_document_urls
+from backend.services.scraper import _detail_page_has_downloadable_pdf, _parse_detail_text_map, fetch_document_urls
 from backend.services.tei_parser import ParsedAuthor
 
 
@@ -50,6 +50,22 @@ def test_parse_detail_text_map_extracts_expected_fields() -> None:
     assert parsed["format"] == "pdf"
 
 
+def test_detail_page_has_downloadable_pdf_accepts_missing_format_for_direct_pdf_link() -> None:
+    assert _detail_page_has_downloadable_pdf(
+        "Paper",
+        "",
+        "https://dvcon-proceedings.org/wp-content/uploads/example-paper.pdf",
+    )
+
+
+def test_detail_page_has_downloadable_pdf_rejects_missing_format_for_non_pdf_link() -> None:
+    assert not _detail_page_has_downloadable_pdf(
+        "Paper",
+        "",
+        "https://ieeexplore.ieee.org/document/10461371/",
+    )
+
+
 def test_fetch_document_urls_uses_homepage_archive_filters(monkeypatch) -> None:
     class FakeResponse:
         def __init__(self, text: str, status_code: int = 200) -> None:
@@ -85,33 +101,38 @@ def test_fetch_document_urls_uses_homepage_archive_filters(monkeypatch) -> None:
                     </html>
                     """
                 ),
-                "https://dvcon-proceedings.org/event_year/y2024/": FakeResponse(
-                    """
-                    <html>
-                        <body>
-                            <a href="https://dvcon-proceedings.org/document/legacy-paper/">Legacy</a>
-                            <a href="https://dvcon-proceedings.org/document/recent-us-paper/">Recent US</a>
-                        </body>
-                    </html>
-                    """
-                ),
-                "https://dvcon-proceedings.org/event_year/y2024/page/2/": FakeResponse("", status_code=404),
-                "https://dvcon-proceedings.org/event_location/united-states/": FakeResponse(
-                    """
-                    <html>
-                        <body>
-                            <a href="https://dvcon-proceedings.org/document/recent-us-paper/">Recent US</a>
-                            <a href="https://dvcon-proceedings.org/document/second-recent-us-paper/">Second Recent US</a>
-                        </body>
-                    </html>
-                    """
-                ),
-                "https://dvcon-proceedings.org/event_location/united-states/page/2/": FakeResponse("", status_code=404),
             }
             response = responses.get(url)
             if response is None:
                 raise AssertionError(f"Unexpected URL fetched: {url}")
             return response
+
+        def post(self, url: str, data: dict[str, str]) -> FakeResponse:
+            if url != "https://dvcon-proceedings.org/document-search":
+                raise AssertionError(f"Unexpected URL posted: {url}")
+            if data != {
+                "ptp_filter_event_year": "y2024",
+                "ptp_filter_document_type": "paper",
+                "ptp_filter_event_location": "united-states",
+                "textsearch": "",
+            }:
+                raise AssertionError(f"Unexpected form payload: {data}")
+
+            return FakeResponse(
+                """
+                <html>
+                    <body>
+                        <table class="posts-data-table">
+                            <tbody>
+                                <tr><td><a href="https://dvcon-proceedings.org/document/legacy-paper/">Legacy</a></td></tr>
+                                <tr><td><a href="https://dvcon-proceedings.org/document/recent-us-paper/">Recent US</a></td></tr>
+                                <tr><td><a href="https://dvcon-proceedings.org/document/recent-us-paper/">Recent US Duplicate</a></td></tr>
+                            </tbody>
+                        </table>
+                    </body>
+                </html>
+                """
+            )
 
     monkeypatch.setattr("backend.services.scraper._http_client", lambda: FakeClient())
 
@@ -120,7 +141,6 @@ def test_fetch_document_urls_uses_homepage_archive_filters(monkeypatch) -> None:
     assert urls == [
         "https://dvcon-proceedings.org/document/legacy-paper/",
         "https://dvcon-proceedings.org/document/recent-us-paper/",
-        "https://dvcon-proceedings.org/document/second-recent-us-paper/",
     ]
 
 
