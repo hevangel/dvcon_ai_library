@@ -174,6 +174,7 @@ Implemented:
 - Chroma semantic indexing
 - local CUDA-backed embeddings
 - grounded chat integration
+- chat continuation token reuse via `previous_response_id`
 - Dockerfile
 - repo-managed `compose.yaml` full app + GROBID stack
 - contributor guide in `CONTRIBUTION.md`
@@ -195,6 +196,8 @@ Verified:
 - live `/summarize` chat requests now succeed against the configured `gpt-5-mini` OpenAI-compatible endpoint after removing the unsupported hard-coded `temperature` parameter
 - selected-paper chat requests now preserve the chosen paper scope for generic prompts like "compare the two papers" instead of falling back to unrelated corpus-wide search results
 - selected-paper chat now estimates prompt tokens against the configured chat model context window and sends full selected paper text when it fits; otherwise it falls back to curated sections
+- chat requests now propagate `previous_response_id` end to end so follow-up turns can reuse the prior Responses API conversation state instead of always resending the full transcript
+- the chat panel now shows an in-transcript loading indicator after submit, auto-scrolls to the newest assistant output, and uses compact numbered citation chips with matching `[n]` labels on the selected-paper scope row
 - scraper URL discovery now uses the live document search UI by reading the homepage Year and Location filters and posting those combinations through the human-facing search form, instead of relying on the incomplete WordPress document sitemap path
 
 ## Important Gotchas
@@ -218,6 +221,7 @@ Verified:
 - The current local corpus is not year-pure anymore: it contains the 10-paper 2025 test set plus 8 Horace Chan papers from 2012-2022.
 - The checked-in `data.example/` tree is a curated sample corpus and should not be confused with the gitignored runtime `data/` directory.
 - When chat requests include `selected_paper_ids`, the backend should keep that scope authoritative; if retrieval is weak for a generic query, it should still build context from the selected papers rather than broadening to the full corpus.
+- The frontend only reuses `previous_response_id` when the selected-paper scope is unchanged; `/clear` and failed chat requests reset the stored continuation id so follow-up turns fall back to a full prompt safely.
 - `scripts/start_backend.*` and `scripts/start_all.*` are expected to bring up GROBID automatically.
 - `scripts/start_grobid.*` should wait for `http://127.0.0.1:8070/api/isalive` to return `true`.
 - `docker compose up --build` is the default container path and should start both `app` and `grobid`.

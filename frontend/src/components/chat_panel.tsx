@@ -4,13 +4,15 @@ import {
     Box,
     Button,
     Chip,
+    CircularProgress,
     Divider,
     Paper,
     Stack,
     TextField,
+    Tooltip,
     Typography,
 } from '@mui/material'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { ChatCitation, ChatMessage, SearchResultItem } from '../types/api'
 
@@ -40,8 +42,13 @@ export function ChatPanel({
     on_submit,
 }: ChatPanelProps) {
     const [draft, set_draft] = useState('')
+    const messages_end_ref = useRef<HTMLDivElement | null>(null)
 
     async function handle_submit() {
+        if (is_loading) {
+            return
+        }
+
         const trimmed = draft.trim()
         if (!trimmed) {
             return
@@ -50,6 +57,13 @@ export function ChatPanel({
         set_draft('')
         await on_submit(trimmed)
     }
+
+    useEffect(() => {
+        messages_end_ref.current?.scrollIntoView({
+            behavior: messages.length > 0 || is_loading ? 'smooth' : 'auto',
+            block: 'end',
+        })
+    }, [messages.length, citations.length, is_loading, show_help])
 
     return (
         <Paper
@@ -73,10 +87,10 @@ export function ChatPanel({
                     {selected_papers.length === 0 ? (
                         <Chip label="No papers selected" size="small" variant="outlined" />
                     ) : (
-                        selected_papers.map((paper) => (
+                        selected_papers.map((paper, index) => (
                             <Chip
                                 key={paper.paper_id}
-                                label={`${paper.title} (${paper.year})`}
+                                label={`[${index + 1}] ${paper.title} (${paper.year})`}
                                 size="small"
                                 color="primary"
                                 variant="outlined"
@@ -137,18 +151,47 @@ export function ChatPanel({
                     </Box>
                 ))}
 
+                {is_loading ? (
+                    <Box
+                        sx={{
+                            alignSelf: 'flex-start',
+                            maxWidth: '92%',
+                            px: 2,
+                            py: 1.5,
+                            borderRadius: 2,
+                            backgroundColor: 'background.paper',
+                            color: 'text.primary',
+                            boxShadow: 1,
+                        }}
+                    >
+                        <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                            Assistant
+                        </Typography>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                            <CircularProgress size={16} />
+                            <Typography sx={{ whiteSpace: 'pre-wrap' }}>Thinking...</Typography>
+                        </Stack>
+                    </Box>
+                ) : null}
+
                 {citations.length > 0 ? (
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                         {citations.map((citation) => (
-                            <Chip
-                                key={`${citation.title}-${citation.year}`}
-                                label={`${citation.title} (${citation.year})`}
-                                size="small"
-                                variant="outlined"
-                            />
+                            <Tooltip
+                                key={`${citation.paper_id}-${citation.index}`}
+                                title={`${citation.title} (${citation.year})`}
+                                arrow
+                            >
+                                <Chip
+                                    label={`[${citation.index}]`}
+                                    size="small"
+                                    variant="outlined"
+                                />
+                            </Tooltip>
                         ))}
                     </Stack>
                 ) : null}
+                <Box ref={messages_end_ref} />
             </Stack>
 
             <Divider />
@@ -161,6 +204,7 @@ export function ChatPanel({
                     maxRows={8}
                     placeholder="Ask a question about the selected papers..."
                     value={draft}
+                    disabled={is_loading}
                     onChange={(event) => set_draft(event.target.value)}
                     onKeyDown={(event) => {
                         if (event.key === 'Enter' && !event.shiftKey) {
@@ -175,7 +219,7 @@ export function ChatPanel({
                     </Typography>
                     <Button
                         variant="contained"
-                        endIcon={<SendIcon />}
+                        endIcon={is_loading ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
                         onClick={() => void handle_submit()}
                         disabled={is_loading}
                     >

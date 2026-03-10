@@ -65,6 +65,8 @@ export interface ChatMessage {
 }
 
 export interface ChatCitation {
+    index: string
+    paper_id: string
     title: string
     year: string
 }
@@ -73,4 +75,5 @@ export interface ChatResponse {
     answer: string
     citations: ChatCitation[]
     scope_paper_ids: number[]
+    response_id?: string | null
 }

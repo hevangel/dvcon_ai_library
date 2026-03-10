@@ -100,6 +100,7 @@ export async function fetch_graph(paper_id: number): Promise<GraphResponse> {
 export async function send_chat(payload: {
     selected_paper_ids: number[]
     messages: ChatMessage[]
+    previous_response_id?: string
 }): Promise<ChatResponse> {
     const response = await api_client.post<ChatResponse>('/chat', payload)
     return response.data

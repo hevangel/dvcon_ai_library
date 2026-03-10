@@ -15,6 +15,7 @@ def chat_with_papers(payload: ChatRequest) -> ChatResponse:
         answer = answer_question(
             messages=[message.model_dump() for message in payload.messages],
             selected_paper_ids=payload.selected_paper_ids,
+            previous_response_id=payload.previous_response_id,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -23,4 +24,5 @@ def chat_with_papers(payload: ChatRequest) -> ChatResponse:
         answer=answer.answer,
         citations=answer.citations,
         scope_paper_ids=answer.scope_paper_ids,
+        response_id=answer.response_id,
     )

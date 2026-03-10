@@ -44,6 +44,8 @@ function App() {
     const [show_chat_help, set_show_chat_help] = useState(true)
     const [chat_error, set_chat_error] = useState<string | undefined>(undefined)
     const [chat_loading, set_chat_loading] = useState(false)
+    const [chat_previous_response_id, set_chat_previous_response_id] = useState<string | undefined>(undefined)
+    const [chat_response_scope_key, set_chat_response_scope_key] = useState('')
     const [search_request, set_search_request] = useState<{
         query: string
         mode: SearchMode
@@ -88,6 +90,7 @@ function App() {
         : active_paper_id
           ? [active_paper_id]
           : []
+    const active_scope_key = active_scope_paper_ids.join(',')
 
     const selected_papers = useMemo(() => {
         const result_map = new Map(search_results.map((paper) => [paper.paper_id, paper]))
@@ -176,6 +179,10 @@ function App() {
     }
 
     async function handle_chat_submit(message: string) {
+        if (chat_loading) {
+            return
+        }
+
         const trimmed_message = message.trim()
         const lower_message = trimmed_message.toLowerCase()
         if (!trimmed_message) {
@@ -193,13 +200,19 @@ function App() {
             set_chat_citations([])
             set_chat_error(undefined)
             set_chat_loading(false)
+            set_chat_previous_response_id(undefined)
+            set_chat_response_scope_key('')
             set_show_chat_help(true)
             return
         }
 
         const resolved_message = resolve_chat_prompt(trimmed_message)
+        const previous_response_id = chat_response_scope_key === active_scope_key
+            ? chat_previous_response_id
+            : undefined
         set_chat_loading(true)
         set_chat_error(undefined)
+        set_chat_citations([])
         set_show_chat_help(false)
         const next_messages = [...chat_messages, { role: 'user', content: resolved_message } satisfies ChatMessage]
         set_chat_messages(next_messages)
@@ -208,13 +221,18 @@ function App() {
             const response = await send_chat({
                 selected_paper_ids: active_scope_paper_ids,
                 messages: next_messages,
+                previous_response_id,
             })
             set_chat_messages([
                 ...next_messages,
                 { role: 'assistant', content: response.answer },
             ])
             set_chat_citations(response.citations)
+            set_chat_previous_response_id(response.response_id ?? undefined)
+            set_chat_response_scope_key(active_scope_key)
         } catch (error) {
+            set_chat_previous_response_id(undefined)
+            set_chat_response_scope_key('')
             if (axios.isAxiosError(error)) {
                 set_chat_error(error.response?.data?.detail ?? 'Unable to complete the chat request.')
             } else {

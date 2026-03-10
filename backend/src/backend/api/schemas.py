@@ -69,9 +69,12 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     selected_paper_ids: list[int] = []
     messages: list[ChatMessage]
+    previous_response_id: str | None = None
 
 
 class ChatCitation(BaseModel):
+    index: str
+    paper_id: str
     title: str
     year: str
 
@@ -80,6 +83,7 @@ class ChatResponse(BaseModel):
     answer: str
     citations: list[ChatCitation]
     scope_paper_ids: list[int]
+    response_id: str | None = None
 
 
 class IngestRequest(BaseModel):

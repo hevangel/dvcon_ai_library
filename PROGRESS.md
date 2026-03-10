@@ -155,6 +155,9 @@ Implemented:
   - Enter to submit
   - Shift+Enter for newline
   - submit button
+  - visible loading state while the assistant reply is in flight
+  - auto-scroll to the newest assistant reply
+  - compact numbered citation chips plus matching `[n]` labels on selected-paper scope chips
   - visible active paper scope
 
 Partial / limitations:
@@ -172,9 +175,10 @@ Implemented:
 - configurable `OPENAI_BASE_URL` and `OPENAI_API_KEY`
 - retrieval-grounded prompt construction
 - support for selected paper scope
+- end-to-end `previous_response_id` propagation so eligible follow-up turns can continue the prior Responses API conversation and save tokens
 - selected-paper fallback context that preserves the chosen scope for generic prompts like "compare the two papers"
 - selected-paper full-text escalation that estimates prompt tokens against the configured model context window and sends full selected paper content when it fits
-- title/year citation metadata returned to the UI
+- numbered citation metadata returned to the UI alongside title/year lookup data
 - scraper URL discovery now uses the homepage Year and Location filters plus the live human search form results, so ingestion no longer depends on the incomplete WordPress document sitemap path
 
 Validated:
@@ -185,6 +189,7 @@ Validated:
 - the chat service no longer hard-codes `temperature`, which previously caused `400` errors from providers that reject that Responses API parameter for this model
 - backend regression tests now cover generic compare prompts so scoped chat does not widen to unrelated papers when `selected_paper_ids` are present
 - backend regression tests now also cover full selected-paper prompt escalation vs fallback section mode based on context-window budget
+- backend smoke tests now cover `previous_response_id` forwarding through `/api/chat` and continuation requests in the chat service
 - backend smoke tests now cover the human-interface scraper path that reads homepage filters and posts through the document search form directly
 
 Notes:
@@ -265,6 +270,7 @@ These items were explicitly verified during implementation:
 - backend imports successfully
 - frontend builds successfully with `npm run build`
 - backend smoke tests pass with `uv run pytest`
+- targeted chat regression coverage passes with `uv run --project backend pytest backend/tests/test_smoke.py`
 - one live DVCon paper was ingested successfully
 - extracted content was indexed into SQLite and Chroma
 - semantic API search returned the ingested paper

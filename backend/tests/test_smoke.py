@@ -21,6 +21,41 @@ def test_health_endpoint_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_chat_endpoint_forwards_previous_response_id(monkeypatch) -> None:
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_answer_question(**kwargs: object) -> SimpleNamespace:
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(
+            answer="Scoped reply.",
+            citations=[{"index": "1", "paper_id": "7", "title": "Example Paper", "year": "2025"}],
+            scope_paper_ids=[7],
+            response_id="resp_123",
+        )
+
+    monkeypatch.setattr("backend.api.routes.chat.answer_question", fake_answer_question)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat",
+        json={
+            "selected_paper_ids": [7],
+            "messages": [{"role": "user", "content": "Summarize this paper."}],
+            "previous_response_id": "resp_prev",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured_kwargs["selected_paper_ids"] == [7]
+    assert captured_kwargs["previous_response_id"] == "resp_prev"
+    assert response.json() == {
+        "answer": "Scoped reply.",
+        "citations": [{"index": "1", "paper_id": "7", "title": "Example Paper", "year": "2025"}],
+        "scope_paper_ids": [7],
+        "response_id": "resp_123",
+    }
+
+
 def test_parse_detail_text_map_extracts_expected_fields() -> None:
     html = """
     <html>
@@ -213,7 +248,7 @@ def test_answer_question_omits_temperature_for_chat_model(monkeypatch) -> None:
     class FakeResponses:
         def create(self, **kwargs: object):
             captured_request.update(kwargs)
-            return SimpleNamespace(output_text="Grounded summary.")
+            return SimpleNamespace(output_text="Grounded summary.", id="resp_grounded")
 
     class FakeOpenAI:
         def __init__(self, *, api_key: str, base_url: str) -> None:
@@ -256,7 +291,8 @@ def test_answer_question_omits_temperature_for_chat_model(monkeypatch) -> None:
     assert captured_request["base_url"] == "https://example.invalid/v1"
     assert captured_request["model"] == "gpt-5-mini"
     assert "temperature" not in captured_request
-    assert "[Source 1]" in str(captured_request["input"])
+    assert answer.response_id == "resp_grounded"
+    assert "[1]" in str(captured_request["input"])
 
 
 def test_context_hits_preserves_selected_scope_for_generic_compare_query(monkeypatch) -> None:
@@ -357,6 +393,62 @@ def test_answer_question_includes_selected_scope_in_prompt(monkeypatch) -> None:
     assert "Selected Paper One (2024, United States)" in str(captured_request["input"])
     assert "Selected Paper Two (2025, India)" in str(captured_request["input"])
     assert "the two papers" in str(captured_request["input"])
+
+
+def test_answer_question_uses_previous_response_id_for_continuation(monkeypatch) -> None:
+    captured_request: dict[str, object] = {}
+
+    class FakeResponses:
+        def create(self, **kwargs: object):
+            captured_request.update(kwargs)
+            return SimpleNamespace(output_text="Continuation ready.", id="resp_next")
+
+    class FakeOpenAI:
+        def __init__(self, *, api_key: str, base_url: str) -> None:
+            self.responses = FakeResponses()
+
+    paper = Paper(
+        id=23,
+        source_url="https://example.com/paper-23",
+        pdf_url="https://example.com/paper-23.pdf",
+        slug="paper-23",
+        title="Continuation Paper",
+        year=2025,
+        location="United States",
+        pdf_path="data/paper/2025/united states/paper-23.pdf",
+    )
+    hits = [SearchHit(paper=paper, score=1.0, snippet="Continuation excerpt.")]
+
+    monkeypatch.setattr(
+        "backend.services.chat.get_settings",
+        lambda: SimpleNamespace(
+            chat_is_configured=True,
+            openai_api_key="test-key",
+            openai_base_url="https://example.invalid/v1",
+            openai_chat_model="gpt-5-mini",
+        ),
+    )
+    monkeypatch.setattr("backend.services.chat._context_hits", lambda question, selected_paper_ids: hits)
+    monkeypatch.setattr("backend.services.chat.OpenAI", FakeOpenAI)
+
+    answer = answer_question(
+        messages=[
+            {"role": "user", "content": "Summarize this paper."},
+            {"role": "assistant", "content": "Initial reply."},
+            {"role": "user", "content": "Go deeper on the methodology."},
+        ],
+        selected_paper_ids=[paper.id],
+        previous_response_id="resp_prev",
+    )
+
+    assert answer.answer == "Continuation ready."
+    assert answer.response_id == "resp_next"
+    assert captured_request["previous_response_id"] == "resp_prev"
+    assert "Conversation so far:" not in str(captured_request["input"])
+    assert "Current user question:" in str(captured_request["input"])
+    assert "Go deeper on the methodology." in str(captured_request["input"])
+    assert "Selected paper scope:" in str(captured_request["input"])
+    assert "[1] Continuation Paper (2025, United States)" in str(captured_request["input"])
 
 
 def test_answer_question_uses_full_selected_paper_context_when_it_fits(monkeypatch) -> None:

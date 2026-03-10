@@ -101,6 +101,7 @@ class ChatAnswer:
     answer: str
     citations: list[dict[str, str]]
     scope_paper_ids: list[int]
+    response_id: str | None
 
 
 def _latest_user_message(messages: list[dict[str, str]]) -> str:
@@ -407,18 +408,14 @@ def _context_hits(question: str, selected_paper_ids: list[int]) -> list[SearchHi
     return hybrid_search(question, limit=8)
 
 
-def _build_prompt(
-    transcript: str,
-    selected_scope_block: str,
-    context_blocks: list[str],
-    selected_paper_ids: list[int],
-    use_full_selected_papers: bool,
-) -> str:
+def _prompt_instructions(selected_paper_ids: list[int], use_full_selected_papers: bool) -> list[str]:
     prompt_lines = [
         "You are a research assistant for DVCon conference papers.",
         "Answer only from the supplied paper context.",
         "If the context is insufficient, say so clearly.",
-        "Cite the paper title inline when you make a claim.",
+        "Cite claims inline using bracketed source numbers like [1] and [2].",
+        "Do not cite paper titles inline in the answer body.",
+        "Use only the numbered citation labels; never use a paper title itself as a citation label.",
     ]
 
     if selected_paper_ids:
@@ -434,12 +431,33 @@ def _build_prompt(
                 "When full selected paper content is supplied for a paper, treat it as the authoritative paper text for that paper."
             )
 
+    return prompt_lines
+
+
+def _build_prompt(
+    question: str,
+    selected_scope_block: str,
+    context_blocks: list[str],
+    selected_paper_ids: list[int],
+    use_full_selected_papers: bool,
+    transcript: str | None = None,
+) -> str:
+    prompt_lines = _prompt_instructions(selected_paper_ids, use_full_selected_papers)
+
+    if transcript:
+        prompt_lines.extend(
+            [
+                "Conversation so far:",
+                transcript,
+            ]
+        )
+
     prompt_lines.extend(
         [
-            "Conversation:",
-            transcript,
+            "Current user question:",
+            question,
             selected_scope_block,
-            "Paper context:",
+            "Numbered paper sources:",
             "\n\n".join(context_blocks),
         ]
     )
@@ -447,6 +465,7 @@ def _build_prompt(
 
 
 def _selected_papers_fit_model_context(
+    question: str,
     transcript: str,
     selected_scope_block: str,
     full_context_blocks: list[str],
@@ -454,6 +473,7 @@ def _selected_papers_fit_model_context(
     settings: object,
 ) -> bool:
     prompt = _build_prompt(
+        question=question,
         transcript=transcript,
         selected_scope_block=selected_scope_block,
         context_blocks=full_context_blocks,
@@ -464,7 +484,11 @@ def _selected_papers_fit_model_context(
     return _estimate_token_count(prompt) <= max(0, available_input_tokens)
 
 
-def answer_question(messages: list[dict[str, str]], selected_paper_ids: list[int]) -> ChatAnswer:
+def answer_question(
+    messages: list[dict[str, str]],
+    selected_paper_ids: list[int],
+    previous_response_id: str | None = None,
+) -> ChatAnswer:
     settings = get_settings()
     if not settings.chat_is_configured:
         raise RuntimeError("OpenAI chat is not configured. Set OPENAI_BASE_URL and OPENAI_API_KEY.")
@@ -479,14 +503,15 @@ def answer_question(messages: list[dict[str, str]], selected_paper_ids: list[int
             answer="No relevant paper context was found for that question.",
             citations=[],
             scope_paper_ids=selected_paper_ids,
+            response_id=None,
         )
 
     transcript = "\n".join(f"{item['role']}: {item['content']}" for item in messages[-8:])
     selected_scope_block = ""
     if selected_paper_ids:
         selected_scope_lines = [
-            f"- {hit.paper.title} ({hit.paper.year}, {hit.paper.location})"
-            for hit in hits
+            f"[{index}] {hit.paper.title} ({hit.paper.year}, {hit.paper.location})"
+            for index, hit in enumerate(hits, start=1)
         ]
         selected_scope_block = "\n".join(
             [
@@ -495,7 +520,15 @@ def answer_question(messages: list[dict[str, str]], selected_paper_ids: list[int
             ]
         )
 
-    citations = [{"title": hit.paper.title, "year": str(hit.paper.year)} for hit in hits]
+    citations = [
+        {
+            "index": str(index),
+            "paper_id": str(hit.paper.id or 0),
+            "title": hit.paper.title,
+            "year": str(hit.paper.year),
+        }
+        for index, hit in enumerate(hits, start=1)
+    ]
     use_full_selected_papers = False
 
     if selected_paper_ids:
@@ -503,13 +536,14 @@ def answer_question(messages: list[dict[str, str]], selected_paper_ids: list[int
         full_context_blocks = [
             "\n".join(
                 [
-                    f"[Source {index}]",
+                    f"[{index}]",
                     _full_selected_paper_context_block(hit, chunk_overlap),
                 ]
             )
             for index, hit in enumerate(hits, start=1)
         ]
         use_full_selected_papers = _selected_papers_fit_model_context(
+            question=question,
             transcript=transcript,
             selected_scope_block=selected_scope_block,
             full_context_blocks=full_context_blocks,
@@ -523,7 +557,7 @@ def answer_question(messages: list[dict[str, str]], selected_paper_ids: list[int
             else [
                 "\n".join(
                     [
-                        f"[Source {index}]",
+                        f"[{index}]",
                         _selected_paper_context_block(hit, question),
                     ]
                 )
@@ -534,15 +568,23 @@ def answer_question(messages: list[dict[str, str]], selected_paper_ids: list[int
         context_blocks = [
             "\n".join(
                 [
-                    f"[Source {index}]",
+                    f"[{index}]",
                     _retrieval_context_block(hit),
                 ]
             )
             for index, hit in enumerate(hits, start=1)
         ]
 
-    prompt = _build_prompt(
+    full_prompt = _build_prompt(
         transcript=transcript,
+        question=question,
+        selected_scope_block=selected_scope_block,
+        context_blocks=context_blocks,
+        selected_paper_ids=selected_paper_ids,
+        use_full_selected_papers=use_full_selected_papers,
+    )
+    continuation_prompt = _build_prompt(
+        question=question,
         selected_scope_block=selected_scope_block,
         context_blocks=context_blocks,
         selected_paper_ids=selected_paper_ids,
@@ -553,14 +595,28 @@ def answer_question(messages: list[dict[str, str]], selected_paper_ids: list[int
         api_key=settings.openai_api_key,
         base_url=settings.openai_base_url,
     )
-    response = client.responses.create(
-        model=settings.openai_chat_model,
-        input=prompt,
-    )
+    if previous_response_id:
+        try:
+            response = client.responses.create(
+                model=settings.openai_chat_model,
+                previous_response_id=previous_response_id,
+                input=continuation_prompt,
+            )
+        except Exception:
+            response = client.responses.create(
+                model=settings.openai_chat_model,
+                input=full_prompt,
+            )
+    else:
+        response = client.responses.create(
+            model=settings.openai_chat_model,
+            input=full_prompt,
+        )
 
     answer = getattr(response, "output_text", "").strip() or "No response generated."
     return ChatAnswer(
         answer=answer,
         citations=citations,
         scope_paper_ids=selected_paper_ids or [hit.paper.id for hit in hits],
+        response_id=getattr(response, "id", None),
     )
