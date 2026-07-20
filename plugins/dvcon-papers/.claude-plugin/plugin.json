@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "dvcon-papers",
+  "version": "1.0.0",
+  "description": "Search, read, and chat with the DVCon conference paper corpus via the dvcon MCP server, a dvcon-papers skill, and a /dvcon slash command.",
+  "author": {
+    "name": "hevangel",
+    "url": "https://github.com/hevangel/dvcon_ai_library"
+  },
+  "homepage": "https://github.com/hevangel/dvcon_ai_library",
+  "skills": ["skills/dvcon-papers"],
+  "commands": ["commands/dvcon.md"],
+  "mcpServers": {
+    "dvcon": {
+      "command": "uv",
+      "args": ["run", "--project", "backend", "dvcon-mcp"],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}/../.."
+    }
+  }
+}

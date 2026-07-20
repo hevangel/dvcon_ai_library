@@ -1,0 +1,26 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "dvcon-marketplace",
+  "description": "Plugins for the DVCon Proceedings Intelligence Portal — search, read, and chat with the dvcon-proceedings.org paper corpus via an MCP server and agent skill.",
+  "version": "1.0.0",
+  "owner": {
+    "name": "hevangel",
+    "url": "https://github.com/hevangel/dvcon_ai_library"
+  },
+  "plugins": [
+    {
+      "name": "dvcon-papers",
+      "displayName": "DVCon Papers",
+      "description": "Search, read, and ask grounded questions about DVCon conference papers through an MCP server backed by the local FastAPI service layer. Bundles a dvcon-papers skill, a /dvcon slash command, and the dvcon MCP server.",
+      "category": "database",
+      "version": "1.0.0",
+      "author": {
+        "name": "hevangel",
+        "url": "https://github.com/hevangel/dvcon_ai_library"
+      },
+      "tags": ["papers", "eda", "verification", "research", "mcp"],
+      "source": "./plugins/dvcon-papers",
+      "homepage": "https://github.com/hevangel/dvcon_ai_library"
+    }
+  ]
+}

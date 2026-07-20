@@ -3,6 +3,7 @@
 !.env.example
 
 .cursor/
+.zcode/
 
 /data/
 

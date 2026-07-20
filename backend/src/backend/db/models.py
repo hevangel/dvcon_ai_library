@@ -1,7 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from sqlmodel import Field, Relationship, SQLModel
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class Conference(SQLModel, table=True):
@@ -10,7 +14,7 @@ class Conference(SQLModel, table=True):
     name: str
     location: str = Field(index=True)
     year: int = Field(index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    created_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
     papers: List["Paper"] = Relationship(back_populates="conference")
 
@@ -49,8 +53,8 @@ class Paper(SQLModel, table=True):
     metadata_json: str | None = None
     last_ingested_at: datetime | None = None
     conference_id: int | None = Field(default=None, foreign_key="conference.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-    updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    created_at: datetime = Field(default_factory=_utcnow, nullable=False)
+    updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
     conference: Optional[Conference] = Relationship(back_populates="papers")
     authors: List["Author"] = Relationship(back_populates="papers", link_model=PaperAuthor)
@@ -65,9 +69,22 @@ class Author(SQLModel, table=True):
     papers: List[Paper] = Relationship(back_populates="authors", link_model=PaperAuthor)
 
 
+class Company(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)
+
+    affiliations: List["Affiliation"] = Relationship(back_populates="company")
+
+
 class Affiliation(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True)
+    company_id: int | None = Field(default=None, foreign_key="company.id", index=True)
+    city: str | None = Field(default=None, index=True)
+    state_province: str | None = Field(default=None, index=True)
+    country: str | None = Field(default=None, index=True)
+
+    company: Optional[Company] = Relationship(back_populates="affiliations")
 
 
 class Chunk(SQLModel, table=True):
@@ -77,7 +94,7 @@ class Chunk(SQLModel, table=True):
     heading: str | None = None
     text: str
     chroma_id: str = Field(unique=True, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    created_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
     paper: Paper = Relationship(back_populates="chunks")
 

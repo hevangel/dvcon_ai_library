@@ -11,7 +11,7 @@ import pymupdf4llm
 from backend.core.config import get_settings
 from backend.services.grobid import process_fulltext_document
 from backend.services.scraper import PaperSeed
-from backend.services.tei_parser import ParsedAuthor, ParsedReference
+from backend.services.tei_parser import ParsedAffiliation, ParsedAuthor, ParsedReference
 
 
 ABSTRACT_PATTERN = re.compile(
@@ -60,6 +60,7 @@ class ExtractedPaper:
     tei_path: str | None
     abstract: str
     affiliations: list[str]
+    affiliations_structured: list[ParsedAffiliation]
     references: list[ParsedReference]
     metadata_json: str
 
@@ -170,6 +171,30 @@ def _extract_references(markdown_text: str) -> list[str]:
             references.append(line)
 
     return references[:100]
+
+
+def _structured_affiliations_from_flat(flat_affiliations: list[str]) -> list[ParsedAffiliation]:
+    """Best-effort structured affiliation when GROBID is unavailable.
+
+    Heuristic extraction can only recover the flattened org+address string, so
+    we record the full string as `name` and use its leading token sequence as a
+    coarse company name guess. Location fields are left empty.
+    """
+    structured: list[ParsedAffiliation] = []
+    seen: set[str] = set()
+    for affiliation in flat_affiliations:
+        cleaned = " ".join(affiliation.split()).strip()
+        if not cleaned:
+            continue
+        key = cleaned.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        # Crude company guess: the first comma-delimited segment usually holds
+        # the organization name in IEEE-style affiliation lines.
+        company_guess = cleaned.split(",", 1)[0].strip() if "," in cleaned else cleaned
+        structured.append(ParsedAffiliation(name=cleaned, company_name=company_guess))
+    return structured
 
 
 def _parse_seed_authors(authors_text: str) -> list[ParsedAuthor]:
@@ -359,6 +384,7 @@ def extract_pdf(seed: PaperSeed) -> ExtractedPaper:
     authors_text = seed.authors_text
     abstract = heuristic_abstract
     affiliations = heuristic_affiliations
+    affiliations_structured = _structured_affiliations_from_flat(heuristic_affiliations)
     references = heuristic_references
     metadata_source = "heuristic"
 
@@ -380,6 +406,10 @@ def extract_pdf(seed: PaperSeed) -> ExtractedPaper:
             abstract = document.abstract
         if document.affiliations:
             affiliations = document.affiliations
+        if document.affiliations_structured:
+            affiliations_structured = document.affiliations_structured
+        else:
+            affiliations_structured = _structured_affiliations_from_flat(affiliations)
         if document.references:
             references = document.references
         metadata_source = "grobid_hybrid"
@@ -404,6 +434,16 @@ def extract_pdf(seed: PaperSeed) -> ExtractedPaper:
                 for author in authors
             ],
             "affiliations": affiliations,
+            "affiliations_structured": [
+                {
+                    "name": affiliation.name,
+                    "company_name": affiliation.company_name,
+                    "city": affiliation.city,
+                    "state_province": affiliation.state_province,
+                    "country": affiliation.country,
+                }
+                for affiliation in affiliations_structured
+            ],
             "reference_count": len(references),
             "references": _reference_payloads(references),
         },
@@ -418,6 +458,7 @@ def extract_pdf(seed: PaperSeed) -> ExtractedPaper:
         tei_path=tei_relative_path,
         abstract=abstract,
         affiliations=affiliations,
+        affiliations_structured=affiliations_structured,
         references=references,
         metadata_json=metadata_json,
     )

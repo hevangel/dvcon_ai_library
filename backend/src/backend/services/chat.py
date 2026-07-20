@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import ceil
+import logging
 import re
 
 from openai import OpenAI
@@ -52,6 +53,9 @@ SECTION_HEADING_KEYWORDS = {
     "conclusion",
     "conclusions",
 }
+logger = logging.getLogger(__name__)
+
+
 STOPWORDS = {
     "a",
     "an",
@@ -602,7 +606,16 @@ def answer_question(
                 previous_response_id=previous_response_id,
                 input=continuation_prompt,
             )
-        except Exception:
+        except Exception as error:
+            # The prior response id may have expired, been evicted by the
+            # provider, or belong to an incompatible model. Fall back to the
+            # full prompt (with the transcript inline) so the turn still
+            # completes. Surface the swallowed error for debugging rather than
+            # silently dropping it.
+            logger.debug(
+                "continuation via previous_response_id failed; retrying with full prompt: %s",
+                error,
+            )
             response = client.responses.create(
                 model=settings.openai_chat_model,
                 input=full_prompt,

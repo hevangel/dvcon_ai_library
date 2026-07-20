@@ -3,10 +3,32 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from slugify import slugify
 from sqlmodel import Session, select
 
 from backend.db.models import Affiliation, AuthorAffiliation, Paper, PaperAuthor, ReferenceEntry
 from backend.db.session import engine
+
+
+def _company_node_id(name: str) -> str:
+    """Stable, deterministic node id for a company/affiliation label.
+
+    Uses a slug of the name rather than Python's randomized hash(), so node ids
+    stay consistent across processes/restarts.
+    """
+    return f"company-{slugify(name) or 'unknown'}"
+
+
+def _affiliation_node_label(affiliation: Affiliation) -> str:
+    """Display label for an affiliation node, enriched with location when known."""
+    location_parts = [
+        part
+        for part in (affiliation.city, affiliation.state_province, affiliation.country)
+        if part
+    ]
+    if not location_parts:
+        return affiliation.name
+    return f"{affiliation.name} ({', '.join(location_parts)})"
 
 
 def build_paper_graph(paper_id: int) -> dict[str, list[dict[str, Any]]]:
@@ -95,12 +117,12 @@ def build_paper_graph(paper_id: int) -> dict[str, list[dict[str, Any]]]:
                 author_affiliations = [Affiliation(id=None, name=link.company_name)]
 
             for affiliation in author_affiliations:
-                company_id = f"company-{abs(hash(affiliation.name))}"
+                company_id = _company_node_id(affiliation.name)
                 nodes.append(
                     {
                         "data": {
                             "id": company_id,
-                            "label": affiliation.name,
+                            "label": _affiliation_node_label(affiliation),
                             "type": "company",
                         }
                     }
@@ -119,7 +141,7 @@ def build_paper_graph(paper_id: int) -> dict[str, list[dict[str, Any]]]:
         if paper.metadata_json:
             metadata = json.loads(paper.metadata_json)
             for affiliation in metadata.get("affiliations", []):
-                company_id = f"company-{abs(hash(affiliation))}"
+                company_id = _company_node_id(affiliation)
                 nodes.append(
                     {
                         "data": {

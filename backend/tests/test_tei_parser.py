@@ -83,3 +83,19 @@ def test_parse_tei_document_extracts_structured_metadata() -> None:
     assert document.references[0].normalized_title == "Reference Paper One"
     assert document.references[0].publication_year == 2024
     assert document.references[0].doi == "10.1000/example"
+
+
+def test_parse_tei_document_extracts_structured_affiliation_fields() -> None:
+    document = parse_tei_document(SAMPLE_TEI)
+
+    structured_by_name = {item.name.casefold(): item for item in document.affiliations_structured}
+    example = structured_by_name["example semiconductor, austin, usa"]
+    assert example.company_name == "Example Semiconductor"
+    assert example.city == "Austin"
+    assert example.country == "USA"
+    assert example.state_province is None
+
+    verification = structured_by_name["verification labs"]
+    assert verification.company_name == "Verification Labs"
+    assert verification.city is None
+    assert verification.country is None

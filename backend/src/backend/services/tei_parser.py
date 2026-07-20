@@ -20,6 +20,23 @@ class ParsedAuthor:
 
 
 @dataclass(slots=True)
+class ParsedAffiliation:
+    """Structured affiliation: company + optional location fields.
+
+    `name` is the flattened, display-ready affiliation string (org + address).
+    The remaining fields split that string into structured parts when the TEI
+    source exposes them. They are optional because heuristic extraction can
+    only produce the flattened `name` reliably.
+    """
+
+    name: str
+    company_name: str = ""
+    city: str | None = None
+    state_province: str | None = None
+    country: str | None = None
+
+
+@dataclass(slots=True)
 class ParsedReference:
     citation_text: str
     normalized_title: str | None = None
@@ -36,6 +53,7 @@ class ParsedTeiDocument:
     abstract: str | None = None
     authors: list[ParsedAuthor] = field(default_factory=list)
     affiliations: list[str] = field(default_factory=list)
+    affiliations_structured: list[ParsedAffiliation] = field(default_factory=list)
     references: list[ParsedReference] = field(default_factory=list)
 
 
@@ -80,20 +98,49 @@ def _author_name(author_node: ET.Element) -> tuple[str, str, str]:
     return full_name, " ".join(given_names).strip(), surname
 
 
+def _structured_affiliation(affiliation_node: ET.Element) -> ParsedAffiliation | None:
+    """Build a structured affiliation from a TEI <affiliation> node.
+
+    Returns None when no org name and no address text can be recovered.
+    """
+    organization_names = [
+        _node_text(node)
+        for node in affiliation_node.findall(".//tei:orgName", TEI_NS)
+        if _node_text(node)
+    ]
+    address_node = affiliation_node.find(".//tei:address", TEI_NS)
+    settlement = _node_text(address_node.find("./tei:settlement", TEI_NS)) if address_node is not None else ""
+    region = _node_text(address_node.find("./tei:region", TEI_NS)) if address_node is not None else ""
+    country = _node_text(address_node.find("./tei:country", TEI_NS)) if address_node is not None else ""
+    address_parts = [part for part in (settlement, region, country) if part]
+
+    company_name = organization_names[0] if organization_names else ""
+    if address_parts:
+        combined = (organization_names + address_parts) if company_name else address_parts
+        name = ", ".join(combined)
+    elif company_name:
+        name = company_name
+    else:
+        raw_text = _node_text(affiliation_node)
+        if not raw_text:
+            return None
+        name = raw_text
+
+    return ParsedAffiliation(
+        name=name,
+        company_name=company_name,
+        city=settlement or None,
+        state_province=region or None,
+        country=country or None,
+    )
+
+
 def _affiliation_texts(author_node: ET.Element) -> list[str]:
     values: list[str] = []
     for affiliation in author_node.findall(".//tei:affiliation", TEI_NS):
-        organization_names = [
-            _node_text(node) for node in affiliation.findall(".//tei:orgName", TEI_NS) if _node_text(node)
-        ]
-        address_parts = [
-            _node_text(node)
-            for node in affiliation.findall(".//tei:address/*", TEI_NS)
-            if _node_text(node)
-        ]
-        combined = organization_names + address_parts
-        if combined:
-            values.append(", ".join(combined))
+        structured = _structured_affiliation(affiliation)
+        if structured is not None:
+            values.append(structured.name)
             continue
 
         raw_text = _node_text(affiliation)
@@ -101,6 +148,22 @@ def _affiliation_texts(author_node: ET.Element) -> list[str]:
             values.append(raw_text)
 
     return _dedupe_preserve_order(values)
+
+
+def _structured_affiliations(root: ET.Element) -> list[ParsedAffiliation]:
+    """Collect structured affiliations across the whole TEI document."""
+    values: list[ParsedAffiliation] = []
+    seen: set[str] = set()
+    for affiliation_node in root.findall(".//tei:affiliation", TEI_NS):
+        structured = _structured_affiliation(affiliation_node)
+        if structured is None:
+            continue
+        key = structured.name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        values.append(structured)
+    return values
 
 
 def _parse_authors(root: ET.Element) -> list[ParsedAuthor]:
@@ -198,5 +261,6 @@ def parse_tei_document(tei_xml: str) -> ParsedTeiDocument:
         abstract=abstract,
         authors=authors,
         affiliations=_dedupe_preserve_order(affiliations),
+        affiliations_structured=_structured_affiliations(root),
         references=_parse_references(root),
     )

@@ -83,7 +83,7 @@ Implemented:
   - markdown and images from `PyMuPDF` / `pymupdf4llm`
   - title, abstract, authors, affiliations, and references enriched from local GROBID when available
   - heuristic fallback retained when GROBID is disabled or unavailable
-- SQLite persistence of papers, conferences, authors, structured affiliations, references, and chunks
+- SQLite persistence of papers, conferences, authors, structured affiliations (with company + city/state/country), references, and chunks
 
 Partial / limitations:
 
@@ -213,6 +213,7 @@ Implemented:
   - abstract / affiliation / reference extraction helpers
   - chunking and embedding-device fallback logic
   - TEI parsing for title, abstract, authors, affiliations, and references
+  - TEI structured affiliation fields (company name, city, state, country)
   - extractor behavior with GROBID enrichment enabled
   - extractor behavior with GROBID unavailable
 - selected-paper chat scope preservation for generic compare prompts
@@ -278,6 +279,14 @@ These items were explicitly verified during implementation:
 - old local ingest artifacts were cleared and replaced with a fresh 10-paper 2025 test corpus
 - all 8 paper records authored by Horace Chan were identified, downloaded, extracted, and added to the local corpus, bringing the current indexed total to 18 papers
 - a checked-in example corpus was created under `data.example/` with the 8 Horace Chan PDFs and their extracted markdown, TEI, and image assets
+- structured affiliations (`Company` table + `Affiliation` location fields) are parsed from TEI, persisted with `_ensure_column` migrations, and rendered in the metadata graph with deterministic slug-based node ids
+- the `keyword_search` selected-scope bug (local `paper_ids` reassignment shadowing the caller's filter) was fixed; the scope parameter is now authoritative
+- `get_stats` now uses `SELECT COUNT(*)` and distinct-column queries instead of loading full rows
+- deprecated `datetime.utcnow()` calls were replaced with timezone-aware `datetime.now(timezone.utc)` across models and indexer
+- the chat continuation fallback now logs the swallowed error at debug level instead of silently retrying
+- an MCP server (`backend/src/backend/mcp_server.py`, `dvcon-mcp` console script) exposes the service layer over stdio transport; all six tools register and import cleanly
+- a workspace agent skill at `.agents/skills/dvcon-papers/SKILL.md` documents the MCP tool surface
+- an Anthropic Claude plugin marketplace (`.claude-plugin/marketplace.json`) plus a self-contained `dvcon-papers` plugin (skill + `/dvcon` command + MCP server) validate as JSON
 
 ## Known Gaps and Risks
 

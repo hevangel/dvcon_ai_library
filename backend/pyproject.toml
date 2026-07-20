@@ -12,6 +12,7 @@ dependencies = [
     "chromadb>=1.5.2",
     "fastapi>=0.135.1",
     "httpx>=0.28.1",
+    "mcp>=1.0.0",
     "openai>=2.26.0",
     "pydantic-settings>=2.13.1",
     "pymupdf>=1.27.1",
@@ -27,6 +28,7 @@ dependencies = [
 [project.scripts]
 backend = "backend.main:run"
 ingest = "backend.tasks.ingest:app"
+dvcon-mcp = "backend.mcp_server:main"
 
 [build-system]
 requires = ["uv_build>=0.9.28,<0.10.0"]

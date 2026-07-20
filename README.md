@@ -76,18 +76,18 @@ Build the image:
 docker build -t dvcon-paper-rag .
 ```
 
-Run the container:
+Run the container (the app listens on its internal `PORT`, default `8000`; map it to a host port of your choice):
 
 ```bash
-docker run --rm -p 8000:8000 --env-file .env dvcon-paper-rag
+docker run --rm -p 8010:8000 --env-file .env dvcon-paper-rag
 ```
 
-Then open `http://localhost:8000`.
+Then open `http://localhost:8010`.
 
 If you want the app container to use a host-managed GROBID sidecar instead of Compose, add:
 
 ```bash
-docker run --rm -p 8000:8000 --env-file .env -e GROBID_URL=http://host.docker.internal:8070 dvcon-paper-rag
+docker run --rm -p 8010:8000 --env-file .env -e GROBID_URL=http://host.docker.internal:8070 dvcon-paper-rag
 ```
 
 ## Ingestion
@@ -128,6 +128,31 @@ The default local embedding model in the repo config is `BAAI/bge-m3`.
 The default chat model is now `gpt-5-mini`.
 
 GROBID is enabled by default. If it is disabled or unavailable, the extractor falls back to the existing heuristic metadata path and still writes markdown and images normally.
+
+## MCP server and agent access
+
+The same paper search, detail, markdown, graph, stats, and grounded chat capabilities are also exposed as a Model Context Protocol (MCP) server over stdio transport, so MCP-compatible agent clients (Claude Code, ZCode, Cursor, etc.) can query the corpus as tools without going over HTTP.
+
+Start the MCP server (read tools work without GROBID or OpenAI; the chat tool needs the OpenAI keys):
+
+```bash
+./scripts/start_mcp.sh      # or: uv run --project backend dvcon-mcp
+```
+
+The server exposes six tools — `search_papers`, `get_paper_detail`, `get_paper_markdown`, `get_paper_graph`, `corpus_stats`, and `chat_with_papers` — all backed by the existing service layer in `backend/src/backend/`.
+
+There is also an agent skill at `.agents/skills/dvcon-papers/SKILL.md` describing when and how to use these tools. Discover it with `/skill dvcon-papers` in a ZCode-style client.
+
+### Anthropic Claude marketplace
+
+A Claude Code plugin marketplace ships at `.claude-plugin/marketplace.json` with one plugin, `dvcon-papers`, which bundles the skill, a `/dvcon` slash command, and the MCP server. Add the marketplace and install it from a Claude Code session:
+
+```
+/plugin marketplace add hevangel/dvcon_ai_library
+/plugin install dvcon-papers@dvcon-marketplace
+```
+
+See `AGENTS.md` for the full MCP tool surface and plugin layout.
 
 ## Current Local Test Corpus
 

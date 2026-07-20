@@ -40,6 +40,7 @@ export interface PaperDetailResponse {
     pdf_url: string
     pdf_path: string
     markdown_path?: string | null
+    tei_path?: string | null
 }
 
 export interface MarkdownResponse {

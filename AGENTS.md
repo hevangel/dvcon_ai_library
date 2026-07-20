@@ -31,6 +31,7 @@ Build and maintain a web app that:
 - Chat: OpenAI Responses API via configurable `OPENAI_BASE_URL` and `OPENAI_API_KEY`
 - Embeddings: local `sentence-transformers` model via `torch`
 - Local embedding device: CUDA preferred, CPU fallback
+- Agent access: MCP server (`mcp` SDK, stdio transport) reusing the service layer; Claude plugin marketplace + agent skill mirror the same tool surface
 
 ## Key Product Requirements
 
@@ -61,6 +62,7 @@ Build and maintain a web app that:
 ## Repository Layout
 
 - `backend/src/backend/main.py`: FastAPI app entrypoint
+- `backend/src/backend/mcp_server.py`: MCP server over stdio (reuses the service layer)
 - `backend/src/backend/core/config.py`: runtime settings from `.env`
 - `backend/src/backend/db/models.py`: SQLModel schema
 - `backend/src/backend/db/session.py`: SQLite engine and FTS setup
@@ -81,11 +83,14 @@ Build and maintain a web app that:
 - `frontend/src/components/`: tab and panel components
 - `frontend/src/api/client.ts`: frontend API client
 - `CONTRIBUTION.md`: contributor workflow and open source etiquette guide
-- `scripts/`: local startup scripts for bash and PowerShell
+- `scripts/`: local startup scripts for bash and PowerShell, including `start_mcp.*`
 - `compose.yaml`: repo-managed app + GROBID runtime stack
 - `data/paper/`: raw downloaded papers
 - `data/`: runtime corpus data root containing downloaded PDFs, extracted markdown, TEI cache, DB, Chroma, and model cache
 - `data.example/`: checked-in Horace Chan sample corpus mirroring the curated `data/` content layout without local DB/vector artifacts
+- `.agents/skills/dvcon-papers/SKILL.md`: workspace agent skill describing the MCP tools
+- `.claude-plugin/marketplace.json`: Anthropic Claude plugin marketplace catalog
+- `plugins/dvcon-papers/`: Claude plugin bundling the skill, `/dvcon` command, and `dvcon` MCP server
 
 ## Backend API Surface
 
@@ -98,6 +103,8 @@ Build and maintain a web app that:
 - `GET /api/papers/{paper_id}/graph`
 - `POST /api/chat`
 - `POST /api/admin/ingest`
+
+The same capabilities are also exposed as MCP tools (see "MCP Server" below): `search_papers`, `get_paper_detail`, `get_paper_markdown`, `get_paper_graph`, `corpus_stats`, and `chat_with_papers`. Both surfaces are thin wrappers over the same `backend.services.*` functions, so behavior stays consistent.
 
 ## Search Design
 
@@ -117,6 +124,35 @@ Build and maintain a web app that:
 - Duplicate structured author entries from GROBID are deduplicated by normalized author name before `PaperAuthor` rows are written.
 - Structured affiliations are persisted alongside the existing flattened `affiliations_text` field.
 - Structured references are persisted alongside the existing flattened `references_text` field.
+- Affiliations carry structured location fields (`city`, `state_province`, `country`) and an optional `company_id` foreign key into a `Company` table. When GROBID exposes `<orgName>`, `<settlement>`, `<region>`, `<country>` in the TEI, those populate the structured fields; otherwise the heuristic path records the flattened string as `name` and a coarse company guess.
+- The metadata graph renders `Company` nodes via the `Affiliation.company` relationship and enriches company/affiliation node labels with city + country when present, falling back to the flattened affiliation name.
+- Affiliation node ids in the graph are slug-based (`company-<slug>`) so they stay deterministic across processes; Python's randomized `hash()` is not used for node identity.
+
+## MCP Server
+
+- The MCP server lives at `backend/src/backend/mcp_server.py` and is launched by the `dvcon-mcp` console script (`uv run --project backend dvcon-mcp`).
+- It uses the official `mcp` SDK's bundled FastMCP (`from mcp.server.fastmcp import FastMCP`) and runs over stdio transport (`mcp.run()`).
+- It is a thin wrapper over `backend.services.*` — no business logic is duplicated between the HTTP API and MCP.
+- Exposed tools: `search_papers`, `get_paper_detail`, `get_paper_markdown`, `get_paper_graph`, `corpus_stats`, `chat_with_papers`.
+- Read tools work without GROBID or OpenAI configured; only `chat_with_papers` needs `OPENAI_BASE_URL` / `OPENAI_API_KEY`.
+- The server calls `create_db_and_tables()` on startup so it can run standalone without the HTTP backend having started first.
+- Tool payloads are plain JSON-serializable dicts (no SQLModel objects leak across the wire).
+
+## Agent Skill
+
+- The workspace skill lives at `.agents/skills/dvcon-papers/SKILL.md` (cross-tool default location per the skill-creator convention).
+- Frontmatter is intentionally minimal: only `name` and `description` (ZCode skill spec — no `model` or `allowed-tools` keys).
+- The description is trigger-forward so the model picks it up when users ask about DVCon papers, EDA/verification methodology, or paper search/summarization even without saying "DVCon" or "MCP".
+- A mirrored copy ships inside the Claude plugin at `plugins/dvcon-papers/skills/dvcon-papers/SKILL.md` so the plugin is self-contained.
+- Use `/skill dvcon-papers` in a ZCode-style client to force-load it; otherwise it auto-triggers based on the description.
+
+## Anthropic Marketplace Plugin
+
+- The marketplace catalog is `.claude-plugin/marketplace.json` (camelCase schema; one plugin entry, `dvcon-papers`, with `source: "./plugins/dvcon-papers"`).
+- The plugin manifest is `plugins/dvcon-papers/.claude-plugin/plugin.json`, declaring the skill, the `/dvcon` command (`commands/dvcon.md`), and the `dvcon` MCP server inline.
+- The MCP server `command` is `uv run --project backend dvcon-mcp` with `cwd: ${CLAUDE_PLUGIN_ROOT}/../..` so it runs from the repo root regardless of where the plugin is installed.
+- Install from a Claude Code session with `/plugin marketplace add hevangel/dvcon_ai_library` then `/plugin install dvcon-papers@dvcon-marketplace`.
+- Plugin `name` is immutable after publish; change `displayName` for UI label changes and use the top-level `renames` map for migrations.
 
 ## Local Embedding Design
 
@@ -170,15 +206,19 @@ Implemented:
 - DVCon crawler and resumable download manifest
 - PDF extraction to markdown and colocated image export
 - hybrid metadata persistence with optional GROBID enrichment
+- structured affiliations (`Company` table + `Affiliation` location fields) parsed from TEI and persisted with backfill migrations
 - SQLite FTS keyword search
 - Chroma semantic indexing
 - local CUDA-backed embeddings
 - grounded chat integration
 - chat continuation token reuse via `previous_response_id`
+- MCP server over stdio reusing the service layer (`dvcon-mcp`)
+- workspace agent skill (`.agents/skills/dvcon-papers`) describing the MCP tools
+- Anthropic Claude plugin marketplace + self-contained `dvcon-papers` plugin (skill + `/dvcon` command + MCP server)
 - Dockerfile
 - repo-managed `compose.yaml` full app + GROBID stack
 - contributor guide in `CONTRIBUTION.md`
-- local run scripts
+- local run scripts (including `start_mcp.*`)
 - smoke tests
 
 Verified:
@@ -237,6 +277,12 @@ Verified:
 - Some OpenAI-compatible providers used with `gpt-5-mini` reject the `temperature` parameter on the Responses API; keep the chat request payload free of hard-coded temperature overrides unless the target model explicitly supports them.
 - Full selected-paper chat uses an approximate token estimate plus a configurable context-window override; if a provider exposes a smaller or larger limit than the repo default, set `OPENAI_CHAT_MODEL_CONTEXT_WINDOW` explicitly.
 - Do not trust the WordPress document sitemap as the primary corpus discovery source. The live site UI exposes newer papers through the homepage filters and document search results even when the document sitemap path is incomplete or truncated.
+- `keyword_search` keeps the caller's `paper_ids` scope filter authoritative; the local FTS-matched id list must use a different name (`matched_paper_ids`) so it never shadows the scope parameter. Do not reintroduce the old `paper_ids = [row[0] for row in rows]` reassignment.
+- `get_stats` uses `SELECT COUNT(*)` / distinct-column queries rather than loading full `Paper` / `Conference` rows; keep it lightweight as the corpus grows.
+- Structured affiliation fields (`Affiliation.city`, `.state_province`, `.country`, `.company_id`) are added via `_ensure_column` migrations in `session.py`; the `Company` table is created by `SQLModel.metadata.create_all`. Legacy `Affiliation` rows backfill their `company_id` and location fields on the next ingest of a paper that touches them.
+- `datetime.utcnow()` is deprecated in Python 3.12+; the codebase uses `datetime.now(timezone.utc)` (and a `_utcnow` factory in `models.py` for column defaults).
+- The MCP server is a separate process from the HTTP backend but shares the same `data/` corpus and `.env`. It is read-mostly; ingestion still goes through the HTTP `/api/admin/ingest` endpoint or the `ingest` CLI, not through MCP.
+- The Claude plugin's MCP `command` relies on `cwd: ${CLAUDE_PLUGIN_ROOT}/../..` resolving to the repo root; if the plugin directory moves, update that path so `uv run --project backend` still finds the backend.
 
 ## Runbook
 
@@ -268,6 +314,21 @@ docker compose up -d grobid
 
 ```bash
 docker compose up --build
+```
+
+### Start the MCP server (stdio)
+
+```bash
+./scripts/start_mcp.sh        # or: uv run --project backend dvcon-mcp
+```
+
+### Install the Claude plugin from the marketplace
+
+From a Claude Code session:
+
+```
+/plugin marketplace add hevangel/dvcon_ai_library
+/plugin install dvcon-papers@dvcon-marketplace
 ```
 
 ### Force reindex after embedding changes

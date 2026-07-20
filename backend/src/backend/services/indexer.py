@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 import time
 from typing import Any
 
 import chromadb
 from sqlalchemy.exc import OperationalError
-from sqlalchemy import delete, text
+from sqlalchemy import delete, func, text
 from sqlmodel import Session, select
 
 from backend.core.config import get_settings
@@ -17,6 +17,7 @@ from backend.db.models import (
     Author,
     AuthorAffiliation,
     Chunk,
+    Company,
     Conference,
     Paper,
     PaperAuthor,
@@ -24,9 +25,9 @@ from backend.db.models import (
 )
 from backend.db.session import engine
 from backend.services.embeddings import embed_texts
-from backend.services.extractor import extract_pdf
+from backend.services.extractor import ExtractedPaper, extract_pdf
 from backend.services.scraper import PaperSeed, crawl_archive
-from backend.services.tei_parser import ParsedAuthor, ParsedReference
+from backend.services.tei_parser import ParsedAffiliation, ParsedAuthor, ParsedReference
 
 
 DATABASE_LOCK_RETRY_ATTEMPTS = 5
@@ -153,21 +154,68 @@ def _paper_for_seed(session: Session, seed: PaperSeed, searchable_text: str) -> 
     paper.authors_text = seed.authors_text
     paper.pdf_path = seed.pdf_path
     paper.searchable_text = searchable_text
-    paper.updated_at = datetime.utcnow()
+    paper.updated_at = datetime.now(timezone.utc)
     session.add(paper)
     session.flush()
     return paper
 
 
-def _get_or_create_affiliation(session: Session, affiliation_name: str) -> Affiliation:
+def _get_or_create_company(session: Session, company_name: str) -> Company:
+    company = session.exec(select(Company).where(Company.name == company_name)).first()
+    if company is not None:
+        return company
+
+    company = Company(name=company_name)
+    session.add(company)
+    session.flush()
+    return company
+
+
+def _get_or_create_affiliation(
+    session: Session,
+    affiliation_name: str,
+    structured_by_name: dict[str, ParsedAffiliation] | None = None,
+) -> Affiliation:
     affiliation = session.exec(select(Affiliation).where(Affiliation.name == affiliation_name)).first()
+    structured = (structured_by_name or {}).get(affiliation_name.casefold())
+
     if affiliation is not None:
+        # Backfill structured fields on legacy rows when newly available.
+        if structured is not None:
+            _populate_affiliation_structured_fields(session, affiliation, structured)
         return affiliation
 
     affiliation = Affiliation(name=affiliation_name)
+    if structured is not None:
+        affiliation.city = structured.city
+        affiliation.state_province = structured.state_province
+        affiliation.country = structured.country
+        if structured.company_name:
+            affiliation.company = _get_or_create_company(session, structured.company_name)
     session.add(affiliation)
     session.flush()
     return affiliation
+
+
+def _populate_affiliation_structured_fields(
+    session: Session, affiliation: Affiliation, structured: ParsedAffiliation
+) -> None:
+    changed = False
+    if affiliation.city is None and structured.city:
+        affiliation.city = structured.city
+        changed = True
+    if affiliation.state_province is None and structured.state_province:
+        affiliation.state_province = structured.state_province
+        changed = True
+    if affiliation.country is None and structured.country:
+        affiliation.country = structured.country
+        changed = True
+    if affiliation.company_id is None and structured.company_name:
+        affiliation.company = _get_or_create_company(session, structured.company_name)
+        changed = True
+    if changed:
+        session.add(affiliation)
+        session.flush()
 
 
 def _dedupe_authors(authors: list[ParsedAuthor]) -> list[ParsedAuthor]:
@@ -210,10 +258,20 @@ def _dedupe_authors(authors: list[ParsedAuthor]) -> list[ParsedAuthor]:
     return deduped
 
 
-def _sync_authors(session: Session, paper: Paper, authors: list[ParsedAuthor], affiliations: list[str]) -> None:
+def _sync_authors(
+    session: Session,
+    paper: Paper,
+    authors: list[ParsedAuthor],
+    affiliations: list[str],
+    affiliations_structured: list[ParsedAffiliation] | None = None,
+) -> None:
     session.exec(delete(PaperAuthor).where(PaperAuthor.paper_id == paper.id))
     session.exec(delete(AuthorAffiliation).where(AuthorAffiliation.paper_id == paper.id))
     session.flush()
+
+    structured_by_name = {
+        item.name.casefold(): item for item in (affiliations_structured or [])
+    }
 
     default_company = affiliations[0] if affiliations else None
     for index, parsed_author in enumerate(_dedupe_authors(authors)):
@@ -240,7 +298,11 @@ def _sync_authors(session: Session, paper: Paper, authors: list[ParsedAuthor], a
         for affiliation_name in author_affiliations:
             if not affiliation_name:
                 continue
-            affiliation = _get_or_create_affiliation(session, affiliation_name)
+            affiliation = _get_or_create_affiliation(
+                session,
+                affiliation_name,
+                structured_by_name=structured_by_name,
+            )
             session.add(
                 AuthorAffiliation(
                     paper_id=paper.id,
@@ -375,10 +437,16 @@ def index_seed(seed: PaperSeed) -> Paper:
         paper.references_text = "\n".join(reference.citation_text for reference in extracted.references)
         paper.metadata_json = extracted.metadata_json
         paper.searchable_text = searchable_text
-        paper.last_ingested_at = datetime.utcnow()
-        paper.updated_at = datetime.utcnow()
+        paper.last_ingested_at = datetime.now(timezone.utc)
+        paper.updated_at = datetime.now(timezone.utc)
 
-        _sync_authors(session, paper, extracted.authors, extracted.affiliations)
+        _sync_authors(
+            session,
+            paper,
+            extracted.authors,
+            extracted.affiliations,
+            extracted.affiliations_structured,
+        )
         _sync_references(session, paper, extracted.references)
         _sync_chunks(session, paper, chunks)
         _sync_fts(session, paper)
@@ -499,18 +567,21 @@ def keyword_search(
             """
         )
         rows = session.exec(statement, params={"query": match_query, "limit": limit * 3}).all()
-        paper_ids = [row[0] for row in rows]
-        if not paper_ids:
+        matched_paper_ids = [row[0] for row in rows]
+        if not matched_paper_ids:
             return []
 
-        papers = session.exec(select(Paper).where(Paper.id.in_(paper_ids))).all()
+        # `paper_ids` is the caller's selected-paper scope filter (may be None for
+        # corpus-wide search). Do NOT reassign it; keep it authoritative here.
+        scope_paper_ids = paper_ids
+        papers = session.exec(select(Paper).where(Paper.id.in_(matched_paper_ids))).all()
         paper_map = {paper.id: paper for paper in papers}
         hits: list[SearchHit] = []
         for paper_id, rank in rows:
             paper = paper_map.get(paper_id)
             if paper is None:
                 continue
-            if paper_ids and paper.id not in paper_ids:
+            if scope_paper_ids and paper.id not in scope_paper_ids:
                 continue
             if year is not None and paper.year != year:
                 continue
@@ -618,14 +689,14 @@ def hybrid_search(
 
 def get_stats() -> dict[str, Any]:
     with Session(engine) as session:
-        paper_count = session.exec(select(Paper)).all()
-        conference_count = session.exec(select(Conference)).all()
-        years = {paper.year for paper in paper_count}
-        locations = {paper.location for paper in paper_count}
+        paper_count = session.exec(select(func.count(Paper.id))).one()
+        conference_count = session.exec(select(func.count(Conference.id))).one()
+        years = session.exec(select(Paper.year).distinct()).all()
+        locations = session.exec(select(Paper.location).distinct()).all()
         return {
-            "paper_count": len(paper_count),
+            "paper_count": paper_count,
             "year_count": len(years),
-            "conference_count": len(conference_count),
+            "conference_count": conference_count,
             "locations": sorted(locations),
             "years": sorted(years, reverse=True),
         }

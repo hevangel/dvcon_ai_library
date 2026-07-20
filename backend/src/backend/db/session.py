@@ -60,6 +60,11 @@ def create_db_and_tables() -> None:
         _ensure_column(session, "referenceentry", "publication_year", "INTEGER")
         _ensure_column(session, "referenceentry", "doi", "TEXT")
         _ensure_column(session, "referenceentry", "raw_tei_json", "TEXT")
+        # Structured affiliation fields (Company table is created by create_all).
+        _ensure_column(session, "affiliation", "company_id", "INTEGER")
+        _ensure_column(session, "affiliation", "city", "TEXT")
+        _ensure_column(session, "affiliation", "state_province", "TEXT")
+        _ensure_column(session, "affiliation", "country", "TEXT")
         session.exec(
             text(
                 """
