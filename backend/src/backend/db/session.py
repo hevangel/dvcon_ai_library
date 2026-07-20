@@ -20,7 +20,15 @@ engine = create_engine(
 
 @event.listens_for(engine, "connect")
 def _configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
+    # Enable WAL so concurrent readers do not block on the ingest writer's
+    # exclusive rollback-journal lock. WAL allows many readers + one writer.
+    # `synchronous=NORMAL` is the recommended companion for WAL: safe against
+    # application crashes, only a small theoretical risk on power loss. Keep
+    # `busy_timeout` so transient lock contention still waits instead of erroring.
     cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode = WAL")
+    cursor.execute("PRAGMA synchronous = NORMAL")
+    cursor.execute("PRAGMA foreign_keys = ON")
     cursor.execute("PRAGMA busy_timeout = 60000")
     cursor.close()
 

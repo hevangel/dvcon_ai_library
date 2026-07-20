@@ -251,7 +251,7 @@ def test_answer_question_omits_temperature_for_chat_model(monkeypatch) -> None:
             return SimpleNamespace(output_text="Grounded summary.", id="resp_grounded")
 
     class FakeOpenAI:
-        def __init__(self, *, api_key: str, base_url: str) -> None:
+        def __init__(self, *, api_key: str, base_url: str, **kwargs: object) -> None:
             captured_request["api_key"] = api_key
             captured_request["base_url"] = base_url
             self.responses = FakeResponses()
@@ -342,7 +342,7 @@ def test_answer_question_includes_selected_scope_in_prompt(monkeypatch) -> None:
             return SimpleNamespace(output_text="Comparison ready.")
 
     class FakeOpenAI:
-        def __init__(self, *, api_key: str, base_url: str) -> None:
+        def __init__(self, *, api_key: str, base_url: str, **kwargs: object) -> None:
             self.responses = FakeResponses()
 
     paper_one = Paper(
@@ -404,7 +404,7 @@ def test_answer_question_uses_previous_response_id_for_continuation(monkeypatch)
             return SimpleNamespace(output_text="Continuation ready.", id="resp_next")
 
     class FakeOpenAI:
-        def __init__(self, *, api_key: str, base_url: str) -> None:
+        def __init__(self, *, api_key: str, base_url: str, **kwargs: object) -> None:
             self.responses = FakeResponses()
 
     paper = Paper(
@@ -460,7 +460,7 @@ def test_answer_question_uses_full_selected_paper_context_when_it_fits(monkeypat
             return SimpleNamespace(output_text="Full paper comparison ready.")
 
     class FakeOpenAI:
-        def __init__(self, *, api_key: str, base_url: str) -> None:
+        def __init__(self, *, api_key: str, base_url: str, **kwargs: object) -> None:
             self.responses = FakeResponses()
 
     paper = Paper(
@@ -516,7 +516,7 @@ def test_answer_question_falls_back_to_selected_sections_when_full_text_does_not
             return SimpleNamespace(output_text="Section-only comparison ready.")
 
     class FakeOpenAI:
-        def __init__(self, *, api_key: str, base_url: str) -> None:
+        def __init__(self, *, api_key: str, base_url: str, **kwargs: object) -> None:
             self.responses = FakeResponses()
 
     paper = Paper(

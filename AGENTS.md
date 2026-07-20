@@ -187,6 +187,9 @@ The same capabilities are also exposed as MCP tools (see "MCP Server" below): `s
 - Embedding-related keys:
   - `LOCAL_EMBEDDING_MODEL`
   - `LOCAL_EMBEDDING_DEVICE`
+- Production-hardening keys:
+  - `INGEST_ADMIN_TOKEN` (optional guard for `POST /api/admin/ingest`)
+  - `ALLOW_CHROMA_WIPE` (opt-in to silent collection reset on model change)
 
 ## Current Local Runtime Settings
 
@@ -284,6 +287,20 @@ Verified:
 - The MCP server is a separate process from the HTTP backend but shares the same `data/` corpus and `.env`. It is read-mostly; ingestion still goes through the HTTP `/api/admin/ingest` endpoint or the `ingest` CLI, not through MCP.
 - The Claude plugin's MCP `command` relies on `cwd: ${CLAUDE_PLUGIN_ROOT}/../..` resolving to the repo root; if the plugin directory moves, update that path so `uv run --project backend` still finds the backend.
 
+## Production Hardening
+
+The backend is hardened for real single-node deployment. Key behaviors a future agent must not regress:
+
+- **SQLite runs in WAL mode** (`PRAGMA journal_mode=WAL`, set in `_configure_sqlite_connection`), with `synchronous=NORMAL`, `foreign_keys=ON`, and `busy_timeout=60000`. WAL is a persistent database-level property — once any connection sets it, the `-wal`/`-shm` sidecar files appear and all connections (including raw `sqlite3` ones) benefit. This is what lets `/search`, `/papers`, `/stats`, and `/chat` keep responding while an ingest write transaction is open. Do not remove these PRAGMAs.
+- **Per-paper error isolation in `run_ingestion`**: a single corrupt PDF, GROBID hiccup, embedding OOM, or Chroma error logs the failure and continues to the next seed (recording `status="index_error"` in the manifest) rather than aborting the whole batch. Only persistent `OperationalError` (DB wedged) re-raises. `OperationalError` retries use a separate helper `_index_seed_with_lock_retries`.
+- **`POST /api/admin/ingest` is serialized** via a module-level `threading.Lock` and returns HTTP **409** if an ingest is already running (concurrent ingests corrupt Chroma and race the manifest). When `INGEST_ADMIN_TOKEN` is set, the endpoint also requires a matching `X-Admin-Token` header (401 otherwise); unset = open for local dev.
+- **Chroma/SQL consistency**: `index_seed` commits SQL as the source of truth; if the commit fails after Chroma was mutated, `_rollback_chroma_ids` deletes the just-added vectors (best-effort compensation). The Chroma client and collection are cached singletons (`_cached_chroma_client` / `_cached_chroma_collection`).
+- **No silent Chroma wipe**: if the on-disk collection was built with a different embedding model than the current setting, `_get_chroma_collection` raises (with guidance to run `ingest --force`) instead of destroying the index. Set `ALLOW_CHROMA_WIPE=1` to restore the legacy auto-reset behavior.
+- **PDF download validation**: `download_pdf` checks `%PDF-` magic bytes, honors `Content-Length`, and opens the saved file with `fitz.open` to assert `page_count > 0`. HTML error pages / Cloudflare interstitials / truncated downloads are rejected and deleted so they can't crash extraction; `crawl_archive` records them in the manifest.
+- **Chat resilience**: the `OpenAI` client is a cached singleton with explicit `timeout` and `max_retries`; `RateLimitError` / `APITimeoutError` / `APIConnectionError` / `AuthenticationError` are mapped to `RuntimeError`, which the route turns into HTTP 503 (instead of a 500 stack trace).
+- **Atomic manifest writes**: `ManifestStore.save` writes to a `.tmp` sibling and `os.replace`s into place; `crawl_archive` saves every 25 successful downloads (plus on every error and once at the end) to avoid O(n²) full-manifest rewrites.
+- **Retry backoff**: `_request_with_retries` uses exponential backoff with jitter and honors the `Retry-After` header on 429 responses.
+
 ## Runbook
 
 ### Backend
@@ -342,6 +359,26 @@ uv run --project backend ingest --limit 1 --force
 ```bash
 uv run --project backend pytest
 ```
+
+### Frontend tests
+
+```bash
+npm --prefix frontend test          # vitest run (one-shot)
+npm --prefix frontend run test:watch # vitest watch
+```
+
+The frontend uses Vitest + @testing-library/react + jsdom. The setup file
+(`frontend/src/test/setup.ts`) polyfills `matchMedia`, `ResizeObserver`, and
+`scrollIntoView` for jsdom and registers jest-dom matchers.
+
+### Validate compose config
+
+```bash
+./scripts/validate_compose.sh      # or: .\scripts\validate_compose.ps1
+```
+
+Static check that `compose.yaml` parses and `${VAR}` references resolve. Does
+not pull images or start containers.
 
 ## Recommended Next Checks For A Future Agent
 

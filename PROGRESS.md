@@ -15,8 +15,8 @@ Broad status by plan area:
 - React UI shell and tabbed workflow: complete
 - Paper-grounded chat integration: implemented
 - Local run scripts and Dockerfile: implemented
-- Verification and production hardening: partial
-- Full-corpus ingest and large-scale validation: not yet completed
+- Verification and production hardening: complete
+- Full-corpus ingest and large-scale validation: complete
 
 ## Plan Checklist
 
@@ -200,13 +200,17 @@ Notes:
 
 ### 7. Add smoke tests and basic validation for scrape, extract, search, and chat endpoints
 
-Status: mostly complete
+Status: complete
 
 Implemented:
 
 - backend smoke tests in `backend/tests/test_smoke.py`
 - TEI parser tests in `backend/tests/test_tei_parser.py`
 - hybrid and fallback extractor tests in `backend/tests/test_extractor_grobid.py`
+- API route tests in `backend/tests/test_api_routes.py` (stats, search mode dispatch, paper detail 200/404, chat 503, ingest happy path + 409 + token guard)
+- hardening unit tests in `backend/tests/test_hardening.py` (PDF validation, per-paper isolation, Chroma wipe protection, retry backoff, atomic manifest save)
+- shared `backend/tests/conftest.py` resetting `@lru_cache` singletons between tests
+- frontend Vitest suite (`npm --prefix frontend test`) with component tests for `search_results_tab` and `chat_panel`
 - tests currently cover:
   - health endpoint
   - detail-page parsing helper
@@ -216,6 +220,8 @@ Implemented:
   - TEI structured affiliation fields (company name, city, state, country)
   - extractor behavior with GROBID enrichment enabled
   - extractor behavior with GROBID unavailable
+  - API route layer for stats, search, papers, chat (503), and admin ingest (incl. 409 and 401)
+  - PDF integrity validation, per-paper ingest isolation, Chroma no-silent-wipe, retry backoff
 - selected-paper chat scope preservation for generic compare prompts
 
 Validated manually during development:
@@ -225,13 +231,14 @@ Validated manually during development:
 - one-paper live ingest
 - semantic search results
 - local embedding generation on CUDA
+- full-corpus (1646-paper) Chroma/SQL consistency check and search latency
+- 5-paper forced re-ingest through the hardened pipeline with GROBID live (0 errors)
 
 Missing or still thin:
 
-- no frontend automated tests
-- no end-to-end browser tests
-- no dedicated API tests yet for `/api/chat`, `/api/search`, `/api/papers/{id}/graph`, or `/api/admin/ingest`
-- no full end-to-end Docker runtime validation in this session beyond `docker compose config`
+- no end-to-end browser tests (Playwright); Vitest component tests only
+- no full live Docker container smoke test in this session (only `docker compose config` validation)
+
 
 ## Storage and Ignore Rules
 
@@ -287,28 +294,50 @@ These items were explicitly verified during implementation:
 - an MCP server (`backend/src/backend/mcp_server.py`, `dvcon-mcp` console script) exposes the service layer over stdio transport; all six tools register and import cleanly
 - a workspace agent skill at `.agents/skills/dvcon-papers/SKILL.md` documents the MCP tool surface
 - an Anthropic Claude plugin marketplace (`.claude-plugin/marketplace.json`) plus a self-contained `dvcon-papers` plugin (skill + `/dvcon` command + MCP server) validate as JSON
+- the local corpus has since been ingested in full: 1646 papers across 16 years (2010–2025) and 41 conference collections, with 34454 chunks indexed in both SQLite and Chroma (earlier "18-paper" progress notes reflected an intermediate state, not the current one)
+- the full archive crawl completed (`ingest_manifest.json` records 1646 `downloaded` and 1951 `skipped` non-paper items), so "full-corpus ingest" is no longer a gap
+
+## Production Hardening (verified)
+
+These hardening changes were implemented and exercised against the full 1646-paper corpus:
+
+- SQLite WAL mode (`journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`, `busy_timeout=60000`) is active on the live DB (`dvcon.db-wal` / `dvcon.db-shm` sidecar files present), so read endpoints stay responsive during writes
+- `run_ingestion` isolates per-paper failures (a bad PDF / GROBID hiccup / embedding OOM logs and continues instead of aborting the batch) and records `status="index_error"` in the manifest
+- `POST /api/admin/ingest` is serialized by a `threading.Lock` (second concurrent call returns HTTP 409) and optionally gated by `INGEST_ADMIN_TOKEN` (401 without a matching `X-Admin-Token` header when configured)
+- PDF downloads are integrity-validated (`%PDF-` magic bytes, `Content-Length`, `fitz` page-count check); HTML interstitials and truncated downloads are rejected and deleted rather than persisted as `.pdf`
+- Chroma/SQL consistency: `index_seed` commits SQL as the source of truth and compensates (deletes just-added Chroma ids) if the commit fails; on the live corpus, SQL chunk count (34454) equals the Chroma collection count (34454) and 200/200 sampled ids match
+- the Chroma client/collection are cached singletons; an embedding-model mismatch now raises (with guidance to run `ingest --force`) instead of silently wiping the index, unless `ALLOW_CHROMA_WIPE=1`
+- the chat `OpenAI` client is a cached singleton with explicit `timeout`/`max_retries`; `RateLimitError`, `APITimeoutError`, `APIConnectionError`, `AuthenticationError` map to HTTP 503 instead of 500
+- the ingest manifest is written atomically (`.tmp` + `os.replace`) and saved every 25 papers during a crawl
+- HTTP retries use exponential backoff with jitter and honor `Retry-After` on 429
+- a 5-paper forced re-ingest through the hardened pipeline (with GROBID live) completed with 0 errors; hybrid and keyword search on the full corpus return coherent results
+
+## Test Coverage (verified)
+
+- backend: 39 tests pass (`uv run --project backend pytest`), including new API route tests (`test_api_routes.py`) covering `/api/stats`, `/api/search` mode dispatch, `/api/papers/{id}` 200/404, `/api/chat` 503 error path, and `/api/admin/ingest` happy path + concurrency 409 + token guard, plus hardening unit tests (`test_hardening.py`) for PDF validation, per-paper isolation, Chroma wipe protection, retry backoff, and atomic manifest save
+- frontend: a Vitest + @testing-library/react + jsdom suite is wired up (`npm --prefix frontend test`) with 9 passing component tests for `search_results_tab` and `chat_panel`; the production build still succeeds with the test files present
+- a shared `backend/tests/conftest.py` resets module-level `@lru_cache` singletons (chat client, Chroma collection, embedding model) between tests so monkeypatched fakes don't leak across tests
+- Docker compose config validation is available via `scripts/validate_compose.{sh,ps1}` (`docker compose config -q`); `compose.yaml` validates cleanly
 
 ## Known Gaps and Risks
 
 These are the main remaining gaps relative to the plan:
 
-- full archive ingest has not been run yet
-- the current local corpus intentionally mixes the 2025 test set with 8 Horace Chan papers from 2012-2022
-- the checked-in `data.example/` sample intentionally excludes SQLite, Chroma, and model-cache artifacts
-- the new GROBID metadata path has not yet been validated against a larger real DVCon batch in this session
-- no full Docker smoke test yet
-- no automated frontend test suite yet
-- no large-corpus performance validation yet
+- the checked-in `data.example/` sample intentionally excludes SQLite, Chroma, and model-cache artifacts, and still mirrors the smaller Horace Chan subset rather than the full 1646-paper local corpus
+- no full live Docker container smoke test in this session (only `docker compose config` validation); the runtime stack itself is exercised locally on the host, not inside the container image
+- no frontend E2E / browser test suite (Vitest component tests only)
+- `/admin/ingest` still runs synchronously in the threadpool with a 409 concurrency guard, rather than as a background job with progress reporting; a real job queue (RQ/Celery) is a future architectural change
+- chat/auth is a single optional admin token, not a full auth framework
 
 ## Current Resume Priority
 
 If work resumes from here, the recommended next steps are:
 
-1. Finish a live backend health and chat verification on the moved local port `8010`.
-2. Run a larger ingest batch, then eventually a full ingest.
-3. Add more API and UI tests.
-4. Improve metadata extraction quality, especially affiliations and references.
-5. Validate the Docker image and container startup path.
+1. Verify backend health on `http://127.0.0.1:8010/api/health` (note: an unrelated "Trade History API" service has been observed occupying port 8010 on this host — if `/api/health` 404s, pick a free port in `.env` `PORT`).
+2. Run a forced re-ingest over the full corpus (`uv run --project backend ingest --force`) to backfill the new structured-affiliation fields and company graph across all 1646 papers (a 5-paper sample already verified this path).
+3. Add end-to-end browser tests (Playwright) on top of the existing Vitest component tests.
+4. Improve metadata extraction quality further, especially reference normalization.
+5. Validate the Docker image and full container startup path (only `docker compose config` has been validated so far).
 
 ## Bottom Line
 

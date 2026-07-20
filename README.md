@@ -123,6 +123,11 @@ Copy `.env.example` to `.env` and provide:
 - `LOCAL_EMBEDDING_MODEL`
 - `LOCAL_EMBEDDING_DEVICE`
 
+Optional production-hardening keys:
+
+- `INGEST_ADMIN_TOKEN` — when set, `POST /api/admin/ingest` requires a matching `X-Admin-Token` header. Unset = open for local dev.
+- `ALLOW_CHROMA_WIPE` — set to `true` to allow the Chroma collection to be silently reset when the embedding model changes (default `false`; run `uv run --project backend ingest --force` to rebuild deliberately).
+
 Semantic search uses a local sentence-transformer model, not the OpenAI API, and will prefer CUDA when available.
 The default local embedding model in the repo config is `BAAI/bge-m3`.
 The default chat model is now `gpt-5-mini`.

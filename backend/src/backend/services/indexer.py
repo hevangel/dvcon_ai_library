@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import lru_cache
+import logging
 import re
 import time
 from typing import Any
@@ -26,12 +28,14 @@ from backend.db.models import (
 from backend.db.session import engine
 from backend.services.embeddings import embed_texts
 from backend.services.extractor import ExtractedPaper, extract_pdf
-from backend.services.scraper import PaperSeed, crawl_archive
+from backend.services.scraper import ManifestStore, PaperSeed, crawl_archive
 from backend.services.tei_parser import ParsedAffiliation, ParsedAuthor, ParsedReference
 
 
 DATABASE_LOCK_RETRY_ATTEMPTS = 5
 DATABASE_LOCK_RETRY_SECONDS = 5
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -48,20 +52,54 @@ def _fts_match_query(query_text: str) -> str:
 
 
 def _get_chroma_collection():
+    """Return the (cached) paper_chunks Chroma collection for the configured model.
+
+    The PersistentClient and collection are cached so reads (search/chat) and
+    writes (ingest) share one client/connection. If the on-disk collection was
+    built with a different embedding model than the current setting, we raise
+    rather than silently wiping the index — a settings typo must not destroy
+    hundreds of embedded papers. Set `ALLOW_CHROMA_WIPE=1` to restore the old
+    auto-reset behavior, or run `ingest --force` to rebuild deliberately.
+    """
+    collection = _cached_chroma_collection()
+    existing_metadata = collection.metadata or {}
+    if existing_metadata.get("embedding_model") != _desired_embedding_model():
+        if not get_settings().allow_chroma_wipe:
+            raise RuntimeError(
+                "Chroma collection was built with embedding model "
+                f"{existing_metadata.get('embedding_model')!r} but the current "
+                f"setting is {_desired_embedding_model()!r}. "
+                "Run `uv run --project backend ingest --limit 1 --force` to rebuild, "
+                "or set ALLOW_CHROMA_WIPE=1 to allow automatic reset."
+            )
+        # Explicit opt-in path: reset and re-cache.
+        client = _cached_chroma_client()
+        client.delete_collection(name="paper_chunks")
+        _cached_chroma_collection.cache_clear()
+        collection = _cached_chroma_collection()
+    return collection
+
+
+@lru_cache(maxsize=1)
+def _cached_chroma_client():
     settings = get_settings()
-    client = chromadb.PersistentClient(path=settings.chroma_dir.as_posix())
+    return chromadb.PersistentClient(path=settings.chroma_dir.as_posix())
+
+
+@lru_cache(maxsize=1)
+def _cached_chroma_collection():
+    settings = get_settings()
+    client = _cached_chroma_client()
     desired_metadata = {
         "embedding_backend": "sentence_transformers",
         "embedding_model": settings.local_embedding_model,
     }
-    collection = client.get_or_create_collection(name="paper_chunks", metadata=desired_metadata)
-    existing_metadata = collection.metadata or {}
+    return client.get_or_create_collection(name="paper_chunks", metadata=desired_metadata)
 
-    if existing_metadata.get("embedding_model") != settings.local_embedding_model:
-        client.delete_collection(name="paper_chunks")
-        collection = client.get_or_create_collection(name="paper_chunks", metadata=desired_metadata)
 
-    return collection
+@lru_cache(maxsize=1)
+def _desired_embedding_model() -> str:
+    return get_settings().local_embedding_model
 
 
 def _chunk_markdown(markdown_text: str) -> list[dict[str, str]]:
@@ -330,7 +368,13 @@ def _sync_references(session: Session, paper: Paper, references: list[ParsedRefe
         )
 
 
-def _sync_chunks(session: Session, paper: Paper, chunks: list[dict[str, str]]) -> None:
+def _sync_chunks(session: Session, paper: Paper, chunks: list[dict[str, str]]) -> list[str]:
+    """Sync chunk rows + Chroma vectors for a paper.
+
+    Returns the list of Chroma ids added this call so the caller can compensate
+    (delete them from Chroma) if the SQL commit subsequently fails, keeping
+    Chroma and SQLite consistent.
+    """
     collection = _get_chroma_collection()
     existing_chunks = session.exec(select(Chunk).where(Chunk.paper_id == paper.id)).all()
     if existing_chunks:
@@ -338,7 +382,7 @@ def _sync_chunks(session: Session, paper: Paper, chunks: list[dict[str, str]]) -
         session.exec(delete(Chunk).where(Chunk.paper_id == paper.id))
 
     if not chunks:
-        return
+        return []
 
     ids = [f"paper-{paper.id}-chunk-{index}" for index in range(len(chunks))]
     embeddings = embed_texts([chunk["text"] for chunk in chunks])
@@ -368,6 +412,20 @@ def _sync_chunks(session: Session, paper: Paper, chunks: list[dict[str, str]]) -
                 chroma_id=ids[index],
             )
         )
+    return ids
+
+
+def _rollback_chroma_ids(added_ids: list[str]) -> None:
+    """Best-effort compensation: delete just-added Chroma vectors if the SQL
+    commit failed, so the indexes don't drift out of sync. Swallows Chroma
+    errors (already in a failure path) but logs them.
+    """
+    if not added_ids:
+        return
+    try:
+        _get_chroma_collection().delete(ids=added_ids)
+    except Exception:  # noqa: BLE001 - compensation must not mask the original error
+        logger.warning("Could not roll back Chroma ids %s after a failed commit", added_ids, exc_info=True)
 
 
 def _sync_fts(session: Session, paper: Paper) -> None:
@@ -448,11 +506,19 @@ def index_seed(seed: PaperSeed) -> Paper:
             extracted.affiliations_structured,
         )
         _sync_references(session, paper, extracted.references)
-        _sync_chunks(session, paper, chunks)
+        added_chroma_ids = _sync_chunks(session, paper, chunks)
         _sync_fts(session, paper)
 
         session.add(paper)
-        session.commit()
+        try:
+            session.commit()
+        except Exception:
+            # SQL commit failed (disk full, integrity error, lock). Chroma was
+            # already mutated with the new vectors; compensate by removing them
+            # so the indexes stay consistent, then re-raise so run_ingestion
+            # logs and continues with the next paper.
+            _rollback_chroma_ids(added_chroma_ids)
+            raise
         session.refresh(paper)
         return paper
 
@@ -506,15 +572,47 @@ def run_ingestion(*, limit: int | None = None, force: bool = False) -> list[Pape
 
     papers: list[Paper] = []
     for seed in seeds_to_index:
-        for attempt in range(DATABASE_LOCK_RETRY_ATTEMPTS + 1):
-            try:
-                papers.append(index_seed(seed))
-                break
-            except OperationalError as error:
-                if not _is_sqlite_database_locked(error) or attempt >= DATABASE_LOCK_RETRY_ATTEMPTS:
-                    raise
-                time.sleep(DATABASE_LOCK_RETRY_SECONDS * (attempt + 1))
+        try:
+            papers.append(_index_seed_with_lock_retries(seed))
+        except OperationalError:
+            # A persistent DB-lock failure is infrastructure-level; re-raise so
+            # the caller knows the writer is wedged rather than silently skipping.
+            raise
+        except Exception as error:  # noqa: BLE001 - isolate one bad paper from the batch
+            # Per-paper isolation: a corrupt PDF, GROBID hiccup, embedding OOM,
+            # or Chroma error must not abort the rest of the batch. Log and move on.
+            logger.exception("Failed to index paper %s; continuing with the rest of the batch", seed.source_url)
+            _record_indexing_error(seed, error)
     return papers
+
+
+def _index_seed_with_lock_retries(seed: PaperSeed) -> Paper:
+    """Index a single seed, retrying only on transient SQLite database-lock errors."""
+    for attempt in range(DATABASE_LOCK_RETRY_ATTEMPTS + 1):
+        try:
+            return index_seed(seed)
+        except OperationalError as error:
+            if not _is_sqlite_database_locked(error) or attempt >= DATABASE_LOCK_RETRY_ATTEMPTS:
+                raise
+            time.sleep(DATABASE_LOCK_RETRY_SECONDS * (attempt + 1))
+    # Unreachable: the loop either returns or raises, but keep a defensive fallback.
+    raise RuntimeError(f"Exhausted retries indexing {seed.source_url}")
+
+
+def _record_indexing_error(seed: PaperSeed, error: Exception) -> None:
+    """Best-effort: note an indexing-stage failure in the ingest manifest.
+
+    Download-stage errors are already recorded by `crawl_archive`; this covers
+    failures that occur after a successful download (extraction/embedding/index).
+    Swallows manifest-write errors since they must not mask the original failure.
+    """
+    try:
+        settings = get_settings()
+        manifest = ManifestStore(settings.manifest_path)
+        manifest.update(seed.source_url, status="index_error", error=f"{type(error).__name__}: {error}")
+        manifest.save()
+    except Exception:  # noqa: BLE001 - manifest is best-effort, never fatal
+        logger.warning("Could not record indexing error for %s in the manifest", seed.source_url, exc_info=True)
 
 
 def list_papers(

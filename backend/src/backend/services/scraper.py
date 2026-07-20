@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
+import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import time
 from typing import Any
 from urllib.parse import urljoin
 
+import fitz
 import httpx
 from bs4 import BeautifulSoup
 from slugify import slugify
@@ -73,8 +76,15 @@ class ManifestStore:
         return data
 
     def save(self) -> None:
+        """Atomically persist the manifest.
+
+        Writes to a sibling temp file then `os.replace`s it into place, so a
+        crash mid-write cannot leave a half-written ingest_manifest.json.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self.data, indent=2), encoding="utf-8")
+        tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(self.data, indent=2), encoding="utf-8")
+        os.replace(tmp_path, self.path)
 
     def get(self, source_url: str) -> dict[str, Any]:
         return self.data.setdefault("documents", {}).setdefault(source_url, {})
@@ -97,11 +107,27 @@ def _http_client() -> httpx.Client:
     )
 
 
+def _retry_delay_seconds(attempt: int, response: httpx.Response | None) -> float:
+    """Exponential backoff with jitter; honors Retry-After on 429.
+
+    `attempt` is 0-indexed. Without Retry-After, delay grows as
+    base * 2**attempt with up to half-base jitter, so concurrent callers don't
+    retry in lockstep.
+    """
+    if response is not None and response.status_code == 429:
+        retry_after = response.headers.get("Retry-After")
+        if retry_after and retry_after.isdigit():
+            return float(retry_after)
+    base = HTTP_RETRY_BACKOFF_SECONDS
+    return base * (2**attempt) + random.uniform(0, base * 0.5)
+
+
 def _request_with_retries(client: httpx.Client, method: str, url: str, **kwargs: Any) -> httpx.Response:
     request = getattr(client, method.lower())
     retryable_status_codes = {429, 500, 502, 503, 504, 521, 522, 524}
 
     last_error: Exception | None = None
+    response: httpx.Response | None = None
     for attempt in range(HTTP_RETRY_ATTEMPTS):
         try:
             response = request(url, **kwargs)
@@ -112,7 +138,7 @@ def _request_with_retries(client: httpx.Client, method: str, url: str, **kwargs:
             last_error = error
             if attempt >= HTTP_RETRY_ATTEMPTS - 1:
                 raise
-            time.sleep(HTTP_RETRY_BACKOFF_SECONDS * (attempt + 1))
+            time.sleep(_retry_delay_seconds(attempt, response))
 
     if last_error is not None:
         raise last_error
@@ -288,9 +314,52 @@ def download_pdf(seed: PaperSeed, *, force: bool = False) -> Path:
     with _http_client() as client:
         response = _request_with_retries(client, "GET", seed.pdf_url)
         response.raise_for_status()
+        _validate_pdf_response(seed.pdf_url, response)
         target_path.write_bytes(response.content)
 
+    _validate_pdf_file(target_path)
     return target_path
+
+
+def _validate_pdf_response(url: str, response: httpx.Response) -> None:
+    """Reject HTML error pages / Cloudflare interstitials / truncated bodies.
+
+    A 200 with an HTML body (WAF challenge, "session expired") or a truncated
+    download would otherwise be persisted as a .pdf and then crash extraction.
+    Raises ValueError on failure so `crawl_archive` records it in the manifest.
+    """
+    content = response.content
+    if not content.startswith(b"%PDF-"):
+        raise ValueError(
+            f"PDF download from {url} did not start with %PDF- magic bytes "
+            f"(got {content[:16]!r}); likely an HTML error page or interstitial."
+        )
+
+    declared_length = response.headers.get("Content-Length")
+    if declared_length and declared_length.isdigit() and int(declared_length) != len(content):
+        raise ValueError(
+            f"PDF download from {url} truncated: Content-Length={declared_length} "
+            f"but received {len(content)} bytes."
+        )
+
+
+def _validate_pdf_file(path: Path) -> None:
+    """Open the saved PDF and assert it has at least one page.
+
+    Cheap integrity check that catches corrupt/truncated files that passed the
+    magic-byte check but are still unparseable. Deletes the bad file so the
+    next run re-downloads instead of trusting the broken local copy.
+    """
+    try:
+        with fitz.open(path) as document:
+            if document.page_count <= 0:
+                raise ValueError("PDF has zero pages.")
+    except Exception as error:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise ValueError(f"Saved PDF at {path} is not a valid PDF: {error}") from error
 
 
 def crawl_archive(*, limit: int | None = None, force: bool = False) -> list[PaperSeed]:
@@ -298,6 +367,11 @@ def crawl_archive(*, limit: int | None = None, force: bool = False) -> list[Pape
     manifest = ManifestStore(settings.manifest_path)
     discovered_urls = fetch_document_urls()
     results: list[PaperSeed] = []
+    # Save on every error (so failures aren't lost), and every N successful
+    # downloads (avoids O(n^2) full-manifest rewrites over a large archive),
+    # plus once at the end.
+    save_every = 25
+    processed_since_save = 0
 
     for source_url in discovered_urls:
         record = manifest.get(source_url)
@@ -332,9 +406,13 @@ def crawl_archive(*, limit: int | None = None, force: bool = False) -> list[Pape
             seed=asdict(seed),
             error=None,
         )
-        manifest.save()
 
         results.append(seed)
+        processed_since_save += 1
+        if processed_since_save >= save_every:
+            manifest.save()
+            processed_since_save = 0
+
         if limit is not None and len(results) >= limit:
             break
 

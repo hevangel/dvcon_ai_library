@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     grobid_url: str = "http://127.0.0.1:8070"
     grobid_timeout_seconds: int = 180
 
+    # Optional guard for the destructive /admin/ingest endpoint. When set, the
+    # endpoint requires an `X-Admin-Token` request header matching this value.
+    # When unset (default), the endpoint is open, preserving local-dev behavior.
+    ingest_admin_token: str | None = None
+    # When true, allow `_get_chroma_collection` to silently reset the collection
+    # if the configured embedding model changes. Default false (raise instead)
+    # so a settings typo cannot silently destroy the vector index.
+    allow_chroma_wipe: bool = False
+
     local_embedding_model: str = "BAAI/bge-m3"
     local_embedding_device: str = "cuda"
     local_embedding_batch_size: int = 16

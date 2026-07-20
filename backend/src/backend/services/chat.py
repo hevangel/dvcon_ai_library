@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from math import ceil
 import logging
 import re
 
+import openai
 from openai import OpenAI
 
 from backend.core.config import get_settings
@@ -106,6 +108,47 @@ class ChatAnswer:
     citations: list[dict[str, str]]
     scope_paper_ids: list[int]
     response_id: str | None
+
+
+# Tunable OpenAI client options. Keep conservative max_retries; the chat route
+# already maps transient failures to a user-visible 503, so we don't want the
+# SDK retrying for minutes before surfacing the error.
+OPENAI_CLIENT_TIMEOUT_SECONDS = 120.0
+OPENAI_CLIENT_MAX_RETRIES = 2
+
+
+@lru_cache(maxsize=1)
+def _get_chat_client() -> OpenAI:
+    """Cached OpenAI client singleton.
+
+    Constructing the client per call (as before) discards the httpx connection
+    pool on every turn, losing keep-alive and adding TLS handshake cost. Cache
+    it so connection reuse persists across chat turns.
+    """
+    settings = get_settings()
+    return OpenAI(
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url,
+        timeout=OPENAI_CLIENT_TIMEOUT_SECONDS,
+        max_retries=OPENAI_CLIENT_MAX_RETRIES,
+    )
+
+
+def _create_completion(client: OpenAI, **kwargs: object):
+    """Wrap `responses.create` so transient provider failures become a clean
+    RuntimeError that the route maps to HTTP 503, instead of a 500 stack trace.
+
+    Auth errors are also surfaced (they indicate a server-side config problem
+    the operator needs to know about, not something the user can fix by retrying).
+    """
+    try:
+        return client.responses.create(**kwargs)  # type: ignore[arg-type]
+    except openai.RateLimitError as error:
+        raise RuntimeError("The chat provider is rate-limiting requests; retry shortly.") from error
+    except (openai.APITimeoutError, openai.APIConnectionError) as error:
+        raise RuntimeError("The chat provider is currently unreachable.") from error
+    except openai.AuthenticationError as error:
+        raise RuntimeError("Chat is misconfigured; check OPENAI_API_KEY and OPENAI_BASE_URL.") from error
 
 
 def _latest_user_message(messages: list[dict[str, str]]) -> str:
@@ -595,33 +638,35 @@ def answer_question(
         use_full_selected_papers=use_full_selected_papers,
     )
 
-    client = OpenAI(
-        api_key=settings.openai_api_key,
-        base_url=settings.openai_base_url,
-    )
+    client = _get_chat_client()
     if previous_response_id:
         try:
-            response = client.responses.create(
+            response = _create_completion(
+                client,
                 model=settings.openai_chat_model,
                 previous_response_id=previous_response_id,
                 input=continuation_prompt,
             )
         except Exception as error:
             # The prior response id may have expired, been evicted by the
-            # provider, or belong to an incompatible model. Fall back to the
-            # full prompt (with the transcript inline) so the turn still
-            # completes. Surface the swallowed error for debugging rather than
-            # silently dropping it.
+            # provider, belong to an incompatible model, or (transient) be a
+            # rate-limit / timeout. Only retry on the non-transient continuation
+            # failures (the wrapper already raised RuntimeError for transients);
+            # if the wrapper raised, propagate it so the route returns 503.
+            if isinstance(error, RuntimeError):
+                raise
             logger.debug(
                 "continuation via previous_response_id failed; retrying with full prompt: %s",
                 error,
             )
-            response = client.responses.create(
+            response = _create_completion(
+                client,
                 model=settings.openai_chat_model,
                 input=full_prompt,
             )
     else:
-        response = client.responses.create(
+        response = _create_completion(
+            client,
             model=settings.openai_chat_model,
             input=full_prompt,
         )
