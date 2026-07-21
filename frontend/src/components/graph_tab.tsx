@@ -1,14 +1,17 @@
 import { Paper, Typography } from '@mui/material'
+import type { Core } from 'cytoscape'
 import CytoscapeComponent from 'react-cytoscapejs'
 
-import type { GraphResponse, PaperDetailResponse } from '../types/api'
+import type { GraphElementData, GraphResponse, PaperDetailResponse } from '../types/api'
 
 interface GraphTabProps {
     paper?: PaperDetailResponse
     graph?: GraphResponse
+    /** Called when the user clicks (taps) a graph node. */
+    on_node_click?: (data: GraphElementData) => void
 }
 
-export function GraphTab({ paper, graph }: GraphTabProps) {
+export function GraphTab({ paper, graph, on_node_click }: GraphTabProps) {
     if (!paper) {
         return (
             <Paper variant="outlined" sx={{ p: 4, height: '100%' }}>
@@ -28,11 +31,28 @@ export function GraphTab({ paper, graph }: GraphTabProps) {
     }
 
     return (
-        <Paper variant="outlined" sx={{ height: '100%', overflow: 'hidden' }}>
+        <Paper variant="outlined" sx={{ height: '100%', overflow: 'hidden', position: 'relative' }}>
+            <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ position: 'absolute', top: 8, left: 12, zIndex: 5, pointerEvents: 'none' }}
+            >
+                Click a conference / author / company node to filter Search Results. Resolved reference
+                nodes jump to that paper.
+            </Typography>
             <CytoscapeComponent
                 elements={[...graph.nodes, ...graph.edges]}
                 style={{ width: '100%', height: '100%' }}
                 layout={{ name: 'breadthfirst', directed: true, padding: 24 }}
+                cy={(cy: Core) => {
+                    if (!on_node_click) return
+                    // `data` from cytoscape's event target is the node's `data`
+                    // payload (id, label, type, click-target fields). Re-emit it
+                    // so App.tsx can decide per-type behavior.
+                    cy.on('tap', 'node', (event) => {
+                        on_node_click(event.target.data() as GraphElementData)
+                    })
+                }}
                 stylesheet={[
                     {
                         selector: 'node',
@@ -47,6 +67,7 @@ export function GraphTab({ paper, graph }: GraphTabProps) {
                             height: 'label',
                             padding: '12px',
                             shape: 'round-rectangle',
+                            'border-width': 0,
                         },
                     },
                     {
@@ -90,6 +111,22 @@ export function GraphTab({ paper, graph }: GraphTabProps) {
                         selector: 'node[type = "reference"]',
                         style: {
                             'background-color': '#fecaca',
+                        },
+                    },
+                    // Clickable affordance: nodes carrying a click-target payload
+                    // get a thicker accent border + pointer cursor. The active
+                    // paper node also carries `paper_id` (for consistency) but is
+                    // excluded — only resolved *reference* nodes are paper-jump
+                    // targets. Author / company / conference nodes are always
+                    // clickable. Order matters: this comes after the per-type
+                    // selectors above so the border is applied on top.
+                    {
+                        selector:
+                            'node[author_name], node[company_name], node[conference_name], node[type = "reference"][paper_id]',
+                        style: {
+                            'border-width': 3,
+                            'border-color': '#1d4ed8',
+                            cursor: 'pointer',
                         },
                     },
                 ]}

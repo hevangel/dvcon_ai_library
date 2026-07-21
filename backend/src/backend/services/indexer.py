@@ -562,8 +562,8 @@ def _paper_needs_ingestion(session: Session, seed: PaperSeed) -> bool:
     return any(tracked_fields)
 
 
-def run_ingestion(*, limit: int | None = None, force: bool = False) -> list[Paper]:
-    seeds = crawl_archive(limit=limit, force=force)
+def run_ingestion(*, limit: int | None = None, force: bool = False, years: list[int] | None = None) -> list[Paper]:
+    seeds = crawl_archive(limit=limit, force=force, years=years)
     if force:
         seeds_to_index = seeds
     else:

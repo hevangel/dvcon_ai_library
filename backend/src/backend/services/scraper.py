@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import time
@@ -20,8 +21,11 @@ from backend.core.config import get_settings
 DVCON_BASE_URL = "https://dvcon-proceedings.org/"
 ARCHIVE_HOME_URL = DVCON_BASE_URL
 SEARCH_RESULTS_URL = urljoin(DVCON_BASE_URL, "document-search")
+ADMIN_AJAX_URL = urljoin(DVCON_BASE_URL, "wp-admin/admin-ajax.php")
 HTTP_RETRY_ATTEMPTS = 5
 HTTP_RETRY_BACKOFF_SECONDS = 2
+AJAX_PAGE_SIZE = 100
+_TABLE_ID_PATTERN = re.compile(r"dlp_[a-f0-9]+_\d+")
 
 
 @dataclass(slots=True)
@@ -164,7 +168,24 @@ def _homepage_filter_values(client: httpx.Client, select_name: str) -> list[str]
 
 
 def _search_form_document_urls(client: httpx.Client, year_value: str, location_value: str) -> list[str]:
-    response = _request_with_retries(
+    """Return document detail-page URLs for a Year x Location x Type=paper filter.
+
+    The DVCon site renders its results table client-side via the Document
+    Library Pro WordPress plugin (DataTables `serverSide: true`). The HTML
+    table returned by the search form is just a header skeleton; the rows are
+    fetched separately via an AJAX call to `admin-ajax.php` keyed by a
+    page-bound `table_id` (a WordPress transient). Filters are bound into the
+    `table_id` server-side by the search-form POST, so the AJAX call itself
+    must NOT resend them.
+
+    Flow per (year, location):
+      1. POST the search form -> the response HTML contains a fresh
+         `<table id="dlp_<hex>_<n>">` whose id is bound to the filter combo.
+      2. POST `action=dlp_load_posts` with that `table_id`, paging
+         `start` by `AJAX_PAGE_SIZE` until `start >= recordsTotal`.
+      3. Parse `<a href=".../document/.../">` from each returned row.
+    """
+    search_response = _request_with_retries(
         client,
         "POST",
         SEARCH_RESULTS_URL,
@@ -175,9 +196,73 @@ def _search_form_document_urls(client: httpx.Client, year_value: str, location_v
             "textsearch": "",
         },
     )
-    response.raise_for_status()
+    search_response.raise_for_status()
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    table_id_match = _TABLE_ID_PATTERN.search(search_response.text)
+    if table_id_match is None:
+        # Plugin not present or page shape changed; fall back to the legacy
+        # server-rendered table parse so a partial site change doesn't wipe
+        # already-discovered URLs from the manifest.
+        return _legacy_table_document_urls(search_response.text)
+
+    table_id = table_id_match.group(0)
+    document_urls: list[str] = []
+
+    start = 0
+    while True:
+        ajax_response = _request_with_retries(
+            client,
+            "POST",
+            ADMIN_AJAX_URL,
+            data={
+                "action": "dlp_load_posts",
+                "table_id": table_id,
+                "start": str(start),
+                "length": str(AJAX_PAGE_SIZE),
+                "search[value]": "",
+                "order[0][column]": "0",
+                "order[0][dir]": "asc",
+            },
+        )
+        ajax_response.raise_for_status()
+
+        payload = json.loads(ajax_response.text)
+        rows = payload.get("data") or []
+        if not rows:
+            break
+
+        for row in rows:
+            # Each row is a dict whose values are already JSON-decoded HTML
+            # strings; document links live in the "title" value. Don't
+            # re-serialize (that would re-escape "/" to "\/" and break the regex).
+            row_values = row.values() if isinstance(row, dict) else [row]
+            for value in row_values:
+                if not isinstance(value, str):
+                    continue
+                for href in re.findall(r'href="(https?://[^"]*?/document/[^"]+)"', value):
+                    document_url = urljoin(DVCON_BASE_URL, href).rstrip("/")
+                    if not document_url or "/document/" not in document_url:
+                        continue
+                    if document_url in document_urls:
+                        continue
+                    document_urls.append(document_url)
+
+        start += AJAX_PAGE_SIZE
+        total = payload.get("recordsTotal") or 0
+        if start >= total:
+            break
+
+    return document_urls
+
+
+def _legacy_table_document_urls(html: str) -> list[str]:
+    """Parse the old server-rendered `<table class="posts-data-table">` shape.
+
+    Kept as a defensive fallback for older site snapshots; the live site
+    switched to client-side row loading in 2025 and the table is now empty
+    in the initial HTML.
+    """
+    soup = BeautifulSoup(html, "html.parser")
     document_urls: list[str] = []
     for row in soup.select("table.posts-data-table tbody tr"):
         anchor = row.select_one("td a[href]")
@@ -189,21 +274,33 @@ def _search_form_document_urls(client: httpx.Client, year_value: str, location_v
             continue
         if document_url in document_urls:
             continue
-
         document_urls.append(document_url)
-
     return document_urls
 
 
-def fetch_document_urls(limit: int | None = None) -> list[str]:
+def fetch_document_urls(limit: int | None = None, years: list[int] | None = None) -> list[str]:
+    """Crawl the DVCon document-search form for `/document/` detail-page URLs.
+
+    `years` (4-digit ints, e.g. `[2025, 2026]`) restricts the crawl to those
+    year filters; when None, every year filter exposed on the homepage is
+    walked. Scoping is strongly recommended for incremental ingests because
+    re-walking years you already have is the slow part of a full crawl.
+    """
     urls: list[str] = []
     seen_urls: set[str] = set()
+
+    if years:
+        wanted_year_values = {f"y{int(year)}" for year in years}
+    else:
+        wanted_year_values = None
 
     with _http_client() as client:
         year_values = _homepage_filter_values(client, "ptp_filter_event_year")
         location_values = _homepage_filter_values(client, "ptp_filter_event_location")
 
         for year_value in year_values:
+            if wanted_year_values is not None and year_value not in wanted_year_values:
+                continue
             for location_value in location_values:
                 for page_url in _search_form_document_urls(client, year_value, location_value):
                     if page_url in seen_urls:
@@ -362,10 +459,10 @@ def _validate_pdf_file(path: Path) -> None:
         raise ValueError(f"Saved PDF at {path} is not a valid PDF: {error}") from error
 
 
-def crawl_archive(*, limit: int | None = None, force: bool = False) -> list[PaperSeed]:
+def crawl_archive(*, limit: int | None = None, force: bool = False, years: list[int] | None = None) -> list[PaperSeed]:
     settings = get_settings()
     manifest = ManifestStore(settings.manifest_path)
-    discovered_urls = fetch_document_urls()
+    discovered_urls = fetch_document_urls(years=years)
     results: list[PaperSeed] = []
     # Save on every error (so failures aren't lost), and every N successful
     # downloads (avoids O(n^2) full-manifest rewrites over a large archive),

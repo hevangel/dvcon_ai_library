@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from slugify import slugify
@@ -31,6 +32,34 @@ def _affiliation_node_label(affiliation: Affiliation) -> str:
     return f"{affiliation.name} ({', '.join(location_parts)})"
 
 
+def _normalize_title_for_match(text: str | None) -> str:
+    """Normalize a title for cross-source matching.
+
+    Whitespace-collapse (mirroring tei_parser._clean_text), casefold, and strip
+    punctuation so that "A New, Fast Method!" matches "A new fast method".
+    """
+    if not text:
+        return ""
+    text = " ".join(text.split()).strip().casefold()
+    text = re.sub(r"[^\w\s]", "", text)
+    return " ".join(text.split())
+
+
+def _build_paper_title_index(session: Session) -> dict[str, int]:
+    """Return {normalized_title -> paper_id} for the whole corpus.
+
+    First-match wins on title collisions (rare; acceptable for graph
+    reference-resolution UX). Built once per graph build (~1852 rows, cheap).
+    """
+    index: dict[str, int] = {}
+    for row in session.exec(select(Paper.id, Paper.title)).all():
+        paper_id, title = row
+        normalized = _normalize_title_for_match(title)
+        if normalized and normalized not in index:
+            index[normalized] = paper_id
+    return index
+
+
 def build_paper_graph(paper_id: int) -> dict[str, list[dict[str, Any]]]:
     with Session(engine) as session:
         paper = session.get(Paper, paper_id)
@@ -43,6 +72,7 @@ def build_paper_graph(paper_id: int) -> dict[str, list[dict[str, Any]]]:
                     "id": f"paper-{paper.id}",
                     "label": paper.title,
                     "type": "paper",
+                    "paper_id": paper.id,
                 }
             }
         ]
@@ -55,6 +85,9 @@ def build_paper_graph(paper_id: int) -> dict[str, list[dict[str, Any]]]:
                         "id": f"conference-{paper.conference.id}",
                         "label": paper.conference.name,
                         "type": "conference",
+                        "conference_name": paper.conference.name,
+                        "year": paper.conference.year,
+                        "location": paper.conference.location,
                     }
                 }
             )
@@ -94,6 +127,7 @@ def build_paper_graph(paper_id: int) -> dict[str, list[dict[str, Any]]]:
                         "id": f"author-{author.id}",
                         "label": author.name,
                         "type": "author",
+                        "author_name": author.name,
                     }
                 }
             )
@@ -124,6 +158,7 @@ def build_paper_graph(paper_id: int) -> dict[str, list[dict[str, Any]]]:
                             "id": company_id,
                             "label": _affiliation_node_label(affiliation),
                             "type": "company",
+                            "company_name": affiliation.name,
                         }
                     }
                 )
@@ -148,22 +183,29 @@ def build_paper_graph(paper_id: int) -> dict[str, list[dict[str, Any]]]:
                             "id": company_id,
                             "label": affiliation,
                             "type": "company",
+                            "company_name": affiliation,
                         }
                     }
                 )
 
         references = session.exec(select(ReferenceEntry).where(ReferenceEntry.paper_id == paper_id)).all()
+        paper_title_index = _build_paper_title_index(session)
         for reference in references[:25]:
             reference_id = f"reference-{reference.id}"
-            nodes.append(
-                {
-                    "data": {
-                        "id": reference_id,
-                        "label": reference.citation_text[:90],
-                        "type": "reference",
-                    }
-                }
-            )
+            reference_node_data: dict[str, Any] = {
+                "id": reference_id,
+                "label": reference.citation_text[:90],
+                "type": "reference",
+                "reference_id": reference.id,
+            }
+            # Resolve to an in-corpus paper when the normalized reference title
+            # exactly matches a corpus paper title. Only references that resolve
+            # get a `paper_id` payload, which the frontend uses to mark them
+            # clickable.
+            resolved_paper_id = paper_title_index.get(_normalize_title_for_match(reference.normalized_title))
+            if resolved_paper_id is not None:
+                reference_node_data["paper_id"] = resolved_paper_id
+            nodes.append({"data": reference_node_data})
             edges.append(
                 {
                     "data": {

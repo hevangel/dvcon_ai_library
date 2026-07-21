@@ -50,8 +50,34 @@ export interface MarkdownResponse {
     markdown_path: string
 }
 
+export type GraphNodeKind = 'paper' | 'author' | 'company' | 'conference' | 'reference'
+
+/**
+ * A single graph node or edge payload. Node payloads carry `id`, `label`,
+ * `type`, and optional click-target fields (e.g. `paper_id` for a resolved
+ * reference, `author_name` / `company_name` for free-text search, or
+ * `year` + `location` for a conference filter). Edge payloads carry
+ * `source`, `target`, and `label`.
+ */
+export interface GraphElementData {
+    id: string
+    label?: string
+    type?: GraphNodeKind
+    // Edge-only fields
+    source?: string
+    target?: string
+    // Node click-target payload fields
+    paper_id?: number
+    author_name?: string
+    company_name?: string
+    conference_name?: string
+    year?: number
+    location?: string
+    reference_id?: number
+}
+
 export interface GraphElement {
-    data: Record<string, string>
+    data: GraphElementData
 }
 
 export interface GraphResponse {

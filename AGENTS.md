@@ -58,6 +58,12 @@ Build and maintain a web app that:
   - input box
   - Enter submits
   - Shift+Enter inserts newline
+- Metadata Graph nodes are clickable (per node type):
+  - **author** / **company** → jump to Search Results filtered by that name (keyword FTS match against `authors` / `affiliations`)
+  - **conference** → jump to Search Results filtered by that conference's year + location (precise, not free-text)
+  - **reference** → if the citation's normalized title resolves to an in-corpus paper, jump to that paper's PDF tab; unresolved references render non-clickable
+  - **paper** (the active paper) → no-op (already viewing it)
+  - The graph tab stays mounted across author/company/conference clicks (graph_query is keyed on `active_paper_id`, which doesn't change), so the user returns to the graph by re-clicking the Metadata Graph tab.
 
 ## Repository Layout
 
@@ -113,6 +119,15 @@ The same capabilities are also exposed as MCP tools (see "MCP Server" below): `s
 - Hybrid search merges keyword and semantic results.
 - Chat retrieval is constrained to selected paper IDs when available.
 - Flattened search fields are preserved even when structured GROBID metadata is present.
+
+## Scraping Design
+
+- Corpus discovery walks the homepage Year x Location filter matrix and posts each combination through the human-facing document search form.
+- The DVCon site renders its results table client-side via the **Document Library Pro** WordPress plugin (DataTables `serverSide: true`). The HTML table returned by the search form is just a header skeleton; the rows are fetched separately via an AJAX call to `admin-ajax.php` keyed by a page-bound `table_id` (a WordPress transient). Filters are bound into the `table_id` server-side by the search-form POST, so the AJAX call itself must NOT resend them.
+- `_search_form_document_urls` therefore: (1) POSTs the search form to obtain a fresh `dlp_<hex>_<n>` `table_id`, (2) POSTs `action=dlp_load_posts` with that `table_id`, paging `start` by `AJAX_PAGE_SIZE` until `start >= recordsTotal`, and (3) parses `/document/` links from each returned row's `title` HTML.
+- If the page shape ever changes and no `table_id` is present in the search response, the scraper falls back to the legacy server-rendered `<table class="posts-data-table">` parse so a partial site change doesn't wipe already-discovered URLs from the manifest.
+- The CLI exposes a `--years` flag (e.g. `ingest --years 2025,2026`) to scope the crawl to specific year filters; this skips the pointless re-walk of older years you already have, which is the slow part of an unbounded crawl.
+- Ingest is idempotent and resumable: papers already in the DB whose PDF + markdown artifacts still exist are skipped unless `--force` is passed.
 
 ## Extraction Design
 
@@ -280,6 +295,8 @@ Verified:
 - Some OpenAI-compatible providers used with `gpt-5-mini` reject the `temperature` parameter on the Responses API; keep the chat request payload free of hard-coded temperature overrides unless the target model explicitly supports them.
 - Full selected-paper chat uses an approximate token estimate plus a configurable context-window override; if a provider exposes a smaller or larger limit than the repo default, set `OPENAI_CHAT_MODEL_CONTEXT_WINDOW` explicitly.
 - Do not trust the WordPress document sitemap as the primary corpus discovery source. The live site UI exposes newer papers through the homepage filters and document search results even when the document sitemap path is incomplete or truncated.
+- The DVCon results table is **not** populated server-side; it loads via the Document Library Pro `admin-ajax.php` endpoint keyed by a per-search-form-POST `table_id`. If `_search_form_document_urls` returns 0 URLs for a year you know has papers, the site's table plugin changed shape — re-extract the `table_id` regex and AJAX `action` name, and verify the legacy fallback path still parses.
+- A full unbounded `ingest` re-walks all 17 years x 6 locations = 102 filter combos (each with a search POST + AJAX pagination). For incremental "fetch new papers" runs, always prefer `ingest --years <recent>` to scope the crawl.
 - `keyword_search` keeps the caller's `paper_ids` scope filter authoritative; the local FTS-matched id list must use a different name (`matched_paper_ids`) so it never shadows the scope parameter. Do not reintroduce the old `paper_ids = [row[0] for row in rows]` reassignment.
 - `get_stats` uses `SELECT COUNT(*)` / distinct-column queries rather than loading full `Paper` / `Conference` rows; keep it lightweight as the corpus grows.
 - Structured affiliation fields (`Affiliation.city`, `.state_province`, `.country`, `.company_id`) are added via `_ensure_column` migrations in `session.py`; the `Company` table is created by `SQLModel.metadata.create_all`. Legacy `Affiliation` rows backfill their `company_id` and location fields on the next ingest of a paper that touches them.
@@ -320,6 +337,21 @@ npm --prefix frontend run dev -- --host 0.0.0.0
 ```bash
 uv run --project backend ingest --limit 1
 ```
+
+### Scoped incremental ingest (recommended for "fetch new papers")
+
+The crawl walks the homepage's Year x Location filter matrix. Scoping to
+recent years skips a pointless re-walk of years you already have, which is
+the slow part of an unbounded crawl.
+
+```bash
+# Crawl only 2025 and 2026 across all locations; index what's missing.
+uv run --project backend ingest --years 2025,2026
+```
+
+The ingest is idempotent: papers already in the DB whose PDF + markdown
+artifacts still exist are skipped, so this is safe to re-run. Pass `--force`
+to re-extract and re-index existing papers in scope.
 
 ### Start only the GROBID sidecar
 

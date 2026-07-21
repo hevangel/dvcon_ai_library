@@ -28,7 +28,7 @@ import { GraphTab } from './components/graph_tab'
 import { MarkdownTab } from './components/markdown_tab'
 import { PdfTab } from './components/pdf_tab'
 import { SearchResultsTab } from './components/search_results_tab'
-import type { ChatMessage, ChatCitation, SearchMode, SearchResultItem } from './types/api'
+import type { ChatMessage, ChatCitation, GraphElementData, SearchMode, SearchResultItem } from './types/api'
 
 function App() {
     const theme = useTheme()
@@ -91,6 +91,31 @@ function App() {
           ? [active_paper_id]
           : []
     const active_scope_key = active_scope_paper_ids.join(',')
+
+    // Metadata-graph node click handler. Behavior is per node type:
+    //   - resolved reference (has paper_id) -> load that paper and jump to PDF
+    //   - author / company -> filter Search Results by name (FTS authors/affils)
+    //   - conference -> filter Search Results by year + location
+    //   - paper node / unmatched reference -> no-op
+    // The graph tab stays mounted (graph_query is keyed on active_paper_id,
+    // which only changes on a reference jump), so the user returns to the graph
+    // by re-clicking the Metadata Graph tab.
+    const handle_graph_node_click = (data: GraphElementData) => {
+        if (data.type === 'reference' && data.paper_id !== undefined) {
+            set_active_paper_id(data.paper_id)
+            set_active_tab(1)
+        } else if (data.type === 'author' && data.author_name) {
+            set_search_request({ query: data.author_name, mode: 'keyword' })
+            set_active_tab(0)
+        } else if (data.type === 'company' && data.company_name) {
+            set_search_request({ query: data.company_name, mode: 'keyword' })
+            set_active_tab(0)
+        } else if (data.type === 'conference' && (data.year !== undefined || data.location)) {
+            set_search_request({ query: '', mode: 'hybrid', year: data.year, location: data.location })
+            set_active_tab(0)
+        }
+    }
+
 
     const selected_papers = useMemo(() => {
         const result_map = new Map(search_results.map((paper) => [paper.paper_id, paper]))
@@ -348,7 +373,13 @@ function App() {
 
                                 {active_tab === 1 ? <PdfTab paper={paper_query.data} /> : null}
                                 {active_tab === 2 ? <MarkdownTab paper={paper_query.data} markdown={markdown_query.data} /> : null}
-                                {active_tab === 3 ? <GraphTab paper={paper_query.data} graph={graph_query.data} /> : null}
+                                {active_tab === 3 ? (
+                                    <GraphTab
+                                        paper={paper_query.data}
+                                        graph={graph_query.data}
+                                        on_node_click={handle_graph_node_click}
+                                    />
+                                ) : null}
                             </Box>
                         </Paper>
                     </Box>

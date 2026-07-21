@@ -19,7 +19,12 @@ from fastapi.testclient import TestClient
 
 import backend.services.indexer as indexer_mod
 from backend.db.models import Paper
-from backend.services.scraper import ManifestStore, _retry_delay_seconds, _validate_pdf_response
+from backend.services.scraper import (
+    ManifestStore,
+    _retry_delay_seconds,
+    _search_form_document_urls,
+    _validate_pdf_response,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -93,7 +98,7 @@ def test_run_ingestion_continues_past_a_failing_paper(monkeypatch) -> None:
         return good_paper
 
     # crawl_archive returns three seeds; force indexing all of them.
-    monkeypatch.setattr(indexer_mod, "crawl_archive", lambda *, limit, force: [seed_a, seed_b, seed_c])
+    monkeypatch.setattr(indexer_mod, "crawl_archive", lambda *, limit, force, years=None: [seed_a, seed_b, seed_c])
     monkeypatch.setattr(indexer_mod, "_paper_needs_ingestion", lambda session, seed: True)
     monkeypatch.setattr(indexer_mod, "_index_seed_with_lock_retries", fake_index_seed_with_retries)
     # Recording errors should be best-effort and not raise.
@@ -164,6 +169,150 @@ def test_manifest_save_is_atomic(tmp_path: Path) -> None:
     assert not (manifest_path.with_suffix(".json.tmp")).exists()
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert data["documents"]["https://example.com/a"]["status"] == "downloaded"
+
+
+# --------------------------------------------------------------------------- #
+# Document Library Pro AJAX-based discovery (serverSide table)
+# --------------------------------------------------------------------------- #
+def test_search_form_document_urls_uses_ajax_path(monkeypatch) -> None:
+    """The live site renders results via admin-ajax.php keyed by table_id.
+
+    Verify the new discovery path:
+      1. POSTs the search form to obtain a fresh table_id bound to the filters.
+      2. POSTs action=dlp_load_posts with that table_id and pages through rows.
+      3. Parses /document/ links from the row HTML.
+    """
+    # First call: the search-form POST returns HTML containing the table id.
+    # Subsequent calls: AJAX pages returning DataTables JSON.
+    search_html = '<table id="dlp_deadbeef_1" class="posts-data-table"></table>'
+
+    def row(title_slug: str) -> dict:
+        return {
+            "title": f'<a href="https://dvcon-proceedings.org/document/{title_slug}/">{title_slug}</a>',
+            "tax:event_year": "2026",
+        }
+
+    ajax_pages = [
+        SimpleNamespace(
+            status_code=200,
+            text=json.dumps(
+                {
+                    "draw": None,
+                    "recordsTotal": 3,
+                    "recordsFiltered": 3,
+                    "data": [row("paper-one"), row("paper-two")],
+                }
+            ),
+            raise_for_status=lambda: None,
+        ),
+        SimpleNamespace(
+            status_code=200,
+            text=json.dumps(
+                {
+                    "draw": None,
+                    "recordsTotal": 3,
+                    "recordsFiltered": 3,
+                    "data": [row("paper-three")],
+                }
+            ),
+            raise_for_status=lambda: None,
+        ),
+    ]
+    call_log: list[tuple[str, str, dict]] = []
+
+    def fake_request(client, method, url, **kwargs):
+        data = kwargs.get("data", {})
+        call_log.append((method, url, dict(data)))
+        if url.endswith("document-search"):
+            return SimpleNamespace(status_code=200, text=search_html, raise_for_status=lambda: None)
+        if url.endswith("admin-ajax.php"):
+            return ajax_pages.pop(0)
+        raise AssertionError(f"unexpected url {url!r}")
+
+    monkeypatch.setattr("backend.services.scraper._request_with_retries", fake_request)
+    monkeypatch.setattr("backend.services.scraper.ADMIN_AJAX_URL", "https://x/admin-ajax.php")
+    monkeypatch.setattr("backend.services.scraper.SEARCH_RESULTS_URL", "https://x/document-search")
+    monkeypatch.setattr("backend.services.scraper.AJAX_PAGE_SIZE", 2)  # force pagination
+
+    urls = _search_form_document_urls(client=object(), year_value="y2026", location_value="india")
+
+    assert urls == [
+        "https://dvcon-proceedings.org/document/paper-one",
+        "https://dvcon-proceedings.org/document/paper-two",
+        "https://dvcon-proceedings.org/document/paper-three",
+    ]
+    # First call posts the search form with the right filters.
+    assert call_log[0] == (
+        "POST",
+        "https://x/document-search",
+        {
+            "ptp_filter_event_year": "y2026",
+            "ptp_filter_document_type": "paper",
+            "ptp_filter_event_location": "india",
+            "textsearch": "",
+        },
+    )
+    # Subsequent calls hit the AJAX endpoint with the table_id and DO NOT resend filters.
+    assert all(entry[1] == "https://x/admin-ajax.php" for entry in call_log[1:])
+    assert all(entry[2]["action"] == "dlp_load_posts" for entry in call_log[1:])
+    assert all(entry[2]["table_id"] == "dlp_deadbeef_1" for entry in call_log[1:])
+    # No tax_* or filter fields should leak into the AJAX payload.
+    for entry in call_log[1:]:
+        assert not any(k.startswith("tax_") or k.startswith("ptp_filter") for k in entry[2]), entry
+
+
+def test_search_form_document_urls_falls_back_when_no_table_id(monkeypatch) -> None:
+    """If the page shape changed and no table_id is present, fall back to the
+    legacy server-rendered table parse so a partial site change doesn't wipe
+    already-discovered URLs from the manifest.
+    """
+    legacy_html = """
+    <table class="posts-data-table"><tbody>
+      <tr><td><a href="/document/legacy-paper/">Legacy</a></td></tr>
+    </tbody></table>
+    """
+
+    def fake_request(client, method, url, **kwargs):
+        return SimpleNamespace(status_code=200, text=legacy_html, raise_for_status=lambda: None)
+
+    monkeypatch.setattr("backend.services.scraper._request_with_retries", fake_request)
+    monkeypatch.setattr("backend.services.scraper.SEARCH_RESULTS_URL", "https://x/document-search")
+
+    urls = _search_form_document_urls(client=object(), year_value="y2026", location_value="india")
+    assert urls == ["https://dvcon-proceedings.org/document/legacy-paper/"]
+
+
+# --------------------------------------------------------------------------- #
+# fetch_document_urls --years filter
+# --------------------------------------------------------------------------- #
+def test_fetch_document_urls_years_filter_skips_other_years(monkeypatch) -> None:
+    """--years must skip year filters outside the requested set so an
+    incremental ingest doesn't re-walk 2010-2024 it already has.
+    """
+    import backend.services.scraper as scraper_mod
+
+    # The homepage exposes y2010..y2026; --years 2025,2026 must only walk those.
+    monkeypatch.setattr(
+        scraper_mod,
+        "_homepage_filter_values",
+        lambda client, name: ["y2010", "y2024", "y2025", "y2026"] if name == "ptp_filter_event_year" else ["india", "united-states"],
+    )
+    seen_combos: list[tuple[str, str]] = []
+
+    def fake_search(client, year_value, location_value):
+        seen_combos.append((year_value, location_value))
+        return [f"https://dvcon-proceedings.org/document/{year_value}-{location_value}-1"]
+
+    monkeypatch.setattr(scraper_mod, "_search_form_document_urls", fake_search)
+
+    urls = scraper_mod.fetch_document_urls(years=[2025, 2026])
+
+    # Only y2025/y2026 combos walked, each against both locations.
+    assert sorted(seen_combos) == [
+        ("y2025", "india"), ("y2025", "united-states"),
+        ("y2026", "india"), ("y2026", "united-states"),
+    ]
+    assert len(urls) == 4
 
 
 # --------------------------------------------------------------------------- #
