@@ -8,6 +8,7 @@ Covers:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -172,3 +173,70 @@ def test_graph_for_missing_paper_returns_empty(tmp_path, monkeypatch) -> None:
 
     graph = graph_mod.build_paper_graph(paper_id=999_999)
     assert graph == {"nodes": [], "edges": []}
+
+
+def test_graph_has_no_disconnected_nodes(tmp_path, monkeypatch) -> None:
+    """Regression: every node must have at least one edge.
+
+    The old `metadata_json.affiliations` block created company nodes with no
+    corresponding edge, producing floating "yellow boxes" in the UI. It also
+    pulled in junk strings (paper-body sentences misclassified as affiliations
+    by the heuristic extractor). That block was removed; this test guards
+    against any future code path that adds an edgeless node.
+    """
+    test_engine = _build_isolated_engine(tmp_path)
+    monkeypatch.setattr(graph_mod, "engine", test_engine)
+
+    with Session(test_engine) as session:
+        paper1_id, _paper2_id = _seed_corpus(session)
+
+    graph = graph_mod.build_paper_graph(paper1_id)
+
+    connected_ids: set[str] = set()
+    for edge in graph["edges"]:
+        connected_ids.add(edge["data"]["source"])
+        connected_ids.add(edge["data"]["target"])
+
+    disconnected = [
+        node["data"]["id"]
+        for node in graph["nodes"]
+        if node["data"]["id"] not in connected_ids
+    ]
+    assert disconnected == [], f"nodes with no edges: {disconnected}"
+
+
+def test_graph_ignores_junk_metadata_affiliations(tmp_path, monkeypatch) -> None:
+    """Regression: raw `metadata_json.affiliations` (heuristic-extractor output)
+    is noisy and often contains paper-body sentences. The graph must NOT pull
+    company nodes from it; only structured AuthorAffiliation / PaperAuthor rows
+    are trustworthy sources for the company graph.
+    """
+    test_engine = _build_isolated_engine(tmp_path)
+    monkeypatch.setattr(graph_mod, "engine", test_engine)
+
+    with Session(test_engine) as session:
+        paper1_id, _paper2_id = _seed_corpus(session)
+        # Simulate the heuristic extractor dumping junk into metadata_json.
+        paper1 = session.get(Paper, paper1_id)
+        paper1.metadata_json = json.dumps(
+            {
+                "affiliations": [
+                    "We verified the design against properties including data integrity.",
+                    "hardware systems as System-on-Chips scale in size and heterogeneity.",
+                ]
+            }
+        )
+        session.add(paper1)
+        session.commit()
+
+    graph = graph_mod.build_paper_graph(paper1_id)
+    company_labels = [
+        node["data"]["label"]
+        for node in graph["nodes"]
+        if node["data"].get("type") == "company"
+    ]
+    # Only the real seeded affiliation (Acme Corp) should appear.
+    assert len(company_labels) == 1
+    assert "Acme Corp" in company_labels[0]
+    assert not any("verified the design" in label for label in company_labels)
+    assert not any("System-on-Chips" in label for label in company_labels)

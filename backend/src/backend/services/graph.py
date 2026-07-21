@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
@@ -169,21 +168,6 @@ def build_paper_graph(paper_id: int) -> dict[str, list[dict[str, Any]]]:
                             "source": f"author-{author.id}",
                             "target": company_id,
                             "label": "affiliated_with",
-                        }
-                    }
-                )
-
-        if paper.metadata_json:
-            metadata = json.loads(paper.metadata_json)
-            for affiliation in metadata.get("affiliations", []):
-                company_id = _company_node_id(affiliation)
-                nodes.append(
-                    {
-                        "data": {
-                            "id": company_id,
-                            "label": affiliation,
-                            "type": "company",
-                            "company_name": affiliation,
                         }
                     }
                 )
