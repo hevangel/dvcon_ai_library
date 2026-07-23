@@ -1,0 +1,97 @@
+name_pattern,canonical_name,sector,bucket_2010,bucket_2015,bucket_2020,bucket_2025,founded_year,is_eda_vendor,notes
+cadence,Cadence Design Systems,eda,large_cap,large_cap,large_cap,large_cap,1988,yes,EDA Big-3. NYSE:CDNS. S&P500 ~2018.
+synopsys,Synopsys,eda,large_cap,large_cap,large_cap,large_cap,1986,yes,EDA Big-3. NASDAQ:SNPS. S&P500 ~2020.
+"mentor graphics|mentor, a siemens business|mentor, a siemens|siemens eda|mentor graphics corp|^mentor$|^mentor,|siemens digital industries",Mentor Graphics / Siemens EDA,eda,large_cap,large_cap,large_cap,large_cap,1981,yes,Acquired by Siemens 2017 -> Siemens EDA.
+ansys,Ansys,eda,mid_cap,large_cap,large_cap,large_cap,1970,yes,Simulation. Synopsys acquisition announced 2024.
+keysight,Keysight Technologies,eda,mid_cap,mid_cap,large_cap,large_cap,2014,yes,EE test. Spin-off from Agilent 2014.
+zuken,Zuken,eda,startup,mid_cap,mid_cap,mid_cap,1976,yes,PCB/ECAD. Japanese public; small-cap.
+altair,Altair Engineering,eda,startup,mid_cap,mid_cap,mid_cap,1985,yes,Simulation + HPC. Acquired by Siemens 2025.
+agnisys,Agnisys,eda,startup,startup,startup,startup,2008,yes,Niche EDA startup (India).
+cose ?da,COSEDA Technologies,eda,startup,startup,startup,startup,2014,yes,AMS EDA startup.
+verilab,Verilab,eda,startup,startup,startup,startup,2001,yes,EDA consultancy; small private.
+ulka ?sem,Ulkasemi,eda,startup,startup,startup,startup,2011,yes,Verification EDA startup.
+paradigm works,Paradigm Works,eda,startup,startup,startup,startup,2003,yes,Verification services.
+betasoft,Betasoft Consulting,eda,startup,startup,startup,startup,2003,yes,EDA consultancy; private.
+cvc pvt|cvc \(verification\),CVC,eda,startup,startup,startup,startup,2004,yes,India verification consultancy.
+tensi ?lica,Tensilica,eda,startup,startup,startup,startup,1997,no,Acquired by Cadence 2013.
+netspeed,NetSpeed Systems,eda,startup,startup,startup,startup,2011,no,Acquired by Synopsys 2018.
+intel,Intel,intel,large_cap,large_cap,large_cap,large_cap,1968,no,NASDAQ:INTC. S&P500.
+nvidia|^nvidia,NVIDIA,intel,large_cap,large_cap,large_cap,large_cap,1993,no,NASDAQ:NVDA. Mega-cap by 2024.
+advanced micro devices|^amd|\bamd\b,AMD,intel,mid_cap,mid_cap,large_cap,large_cap,1969,no,NASDAQ:AMD. Mid-cap pre-Zen 2017.
+qualcomm,Qualcomm,intel,large_cap,large_cap,large_cap,large_cap,1985,no,NASDAQ:QCOM. S&P500.
+samsung,Samsung,samsung,large_cap,large_cap,large_cap,large_cap,1938,no,Korean chaebol.
+infineon,Infineon,samsung,large_cap,large_cap,large_cap,large_cap,1999,no,DAX. German IDM.
+nxp,NXP Semiconductors,samsung,large_cap,large_cap,large_cap,large_cap,2006,no,NASDAQ:NXPI. Automotive.
+stmicro|st micro,STMicroelectronics,samsung,large_cap,large_cap,large_cap,large_cap,1987,no,NYSE:STM.
+micron,Micron Technology,samsung,large_cap,large_cap,large_cap,large_cap,1978,no,NASDAQ:MU. Memory.
+broadcom,Broadcom,samsung,large_cap,large_cap,large_cap,large_cap,1991,no,NASDAQ:AVGO. S&P500.
+marvell,Marvell Technology,samsung,large_cap,large_cap,large_cap,large_cap,1995,no,NASDAQ:MRVL.
+texas instruments|\bti \(,Texas Instruments,samsung,large_cap,large_cap,large_cap,large_cap,1930,no,NASDAQ:TXN. S&P500.
+analog devices,Analog Devices,samsung,large_cap,large_cap,large_cap,large_cap,1965,no,NASDAQ:ADI.
+renesas,Renesas,samsung,large_cap,large_cap,large_cap,large_cap,2002,no,Japanese automotive semi.
+microchip,Microchip Technology,samsung,mid_cap,mid_cap,large_cap,large_cap,1989,no,NASDAQ:MCHP.
+on semi|onsemi,onsemi,samsung,mid_cap,mid_cap,mid_cap,large_cap,1999,no,NASDAQ:ON.
+lattice,Lattice Semiconductor,samsung,mid_cap,startup,mid_cap,mid_cap,1983,no,NASDAQ:LSCC.
+xilinx,Xilinx,samsung,large_cap,large_cap,large_cap,large_cap,1984,no,Acquired by AMD 2022.
+tsmc,TSMC,samsung,large_cap,large_cap,large_cap,large_cap,1987,no,NYSE:TSM. Foundry.
+arm ltd|arm inc|^arm |\barm\b,Arm,intel,large_cap,large_cap,large_cap,large_cap,1990,no,NASDAQ:ARM IPO 2023.
+global ?foundries,GlobalFoundries,samsung,mid_cap,large_cap,large_cap,large_cap,2009,no,NASDAQ:GFS.
+mediatek,MediaTek,samsung,large_cap,large_cap,large_cap,large_cap,1997,no,TPEX:2454.
+apple,Apple,samsung,large_cap,large_cap,large_cap,large_cap,1976,no,NASDAQ:AAPL.
+google,Google,samsung,large_cap,large_cap,large_cap,large_cap,1998,no,NASDAQ:GOOGL.
+microsoft,Microsoft,samsung,large_cap,large_cap,large_cap,large_cap,1975,no,NASDAQ:MSFT.
+^ibm|\bibm\b,IBM,samsung,large_cap,large_cap,large_cap,large_cap,1911,no,NYSE:IBM.
+oracle,Oracle,samsung,large_cap,large_cap,large_cap,large_cap,1977,no,NYSE:ORCL. Oracle Labs publishes DVCon papers.
+meta platforms|facebook|\bmeta\b,Meta Platforms,samsung,large_cap,large_cap,large_cap,large_cap,2004,no,NASDAQ:META.
+maxlinear,MaxLinear,samsung,startup,mid_cap,mid_cap,mid_cap,2003,no,NYSE:MXL.
+realtek,Realtek,samsung,mid_cap,mid_cap,mid_cap,mid_cap,1987,no,TWSE:2379.
+silicon labs,Silicon Labs,samsung,mid_cap,mid_cap,mid_cap,mid_cap,1996,no,NASDAQ:SLAB.
+dialog semiconductor,Dialog Semiconductor,samsung,mid_cap,mid_cap,mid_cap,mid_cap,1981,no,Acquired by Renesas 2021.
+microsemi,Microsemi,samsung,mid_cap,mid_cap,mid_cap,large_cap,1960,no,Acquired by Microchip 2018.
+altera,Altera,intel,large_cap,large_cap,large_cap,large_cap,1983,no,Intel PSG; spun out 2024.
+cypress semiconductor|^cypress\b,Cypress Semiconductor,samsung,mid_cap,mid_cap,mid_cap,mid_cap,1982,no,Acquired by Infineon 2020.
+lsi |lsi india|lsi corp,LSI Corporation,samsung,mid_cap,mid_cap,mid_cap,mid_cap,1981,no,Acquired by Avago/Broadcom 2014.
+mathworks,MathWorks,eda,mid_cap,mid_cap,large_cap,large_cap,1984,no,MATLAB/Simulink; private but large.
+medtronic,Medtronic,auto,large_cap,large_cap,large_cap,large_cap,1949,no,NYSE:MDT. Medical devices.
+accellera,Accellera Systems Initiative,eda,startup,startup,startup,startup,2000,yes,Standards body; non-profit.
+minres,MINRES Technologies,eda,startup,startup,startup,startup,2016,yes,Small German EDA consultancy.
+qt technologies|^qt ,QT Technologies,eda,startup,startup,startup,startup,2019,yes,Verification IP startup (Ireland).
+willamette hdl,Willamette HDL,eda,startup,startup,startup,startup,1997,yes,Verification training/services.
+sunburst design,Sunburst Design,eda,startup,startup,startup,startup,2002,yes,Verification training.
+veriest,Veriest Solutions,eda,startup,startup,startup,startup,2013,yes,Verification services (Israel/Serbia/India).
+amiq,AMIQ Consulting,eda,startup,startup,startup,startup,2007,yes,DV automation consultancy.
+doulos,Doulos,eda,startup,startup,startup,startup,1991,yes,Training/services (UK).
+coverify,Coverify Systems Technology,eda,startup,startup,startup,startup,2014,yes,Verification consultancy.
+verifyter,Verifyter,eda,startup,startup,startup,startup,2009,yes,Link_check / DV tools (Sweden).
+dice gmbh,DICE GmbH,auto,startup,startup,startup,startup,1999,no,Austrian engineering services.
+politecnico di torino|politecnico di,Politecnico (academic),academic,academic,academic,academic,academic,,no,Italian polytechnic.
+syosil,SyoSil,eda,startup,startup,startup,startup,2003,yes,Verification IP (Denmark).
+oski technology,Oski Technology,eda,startup,startup,startup,startup,2005,yes,Formal verification services; acquired by Cadence 2020.
+duolog,Duolog Technologies,eda,startup,startup,startup,startup,1999,no,Acquired by Cadence 2014.
+onespin,OneSpin Solutions,eda,startup,startup,startup,startup,2005,yes,Formal verification EDA.
+synthworks,SynthWorks,eda,startup,startup,startup,startup,2000,yes,VHDL training.
+aquantia,Aquantia,samsung,startup,mid_cap,mid_cap,mid_cap,2004,no,Acquired by Marvell 2019.
+avago,Avago Technologies,samsung,large_cap,large_cap,large_cap,large_cap,1961,no,Pre-Broadcom name; same lineage.
+cavium,Cavium,samsung,mid_cap,mid_cap,mid_cap,mid_cap,2000,no,Acquired by Marvell 2018.
+robert bosch|bosch sensortec|\bbosch\b,Robert Bosch,auto,large_cap,large_cap,large_cap,large_cap,1886,no,Private GmbH; huge revenue.
+continental ag|\bcontinental\b,Continental AG,auto,large_cap,large_cap,large_cap,large_cap,1871,no,German automotive supplier.
+zf friedrichshafen,ZF Friedrichshafen,auto,large_cap,large_cap,large_cap,large_cap,1915,no,Private German automotive.
+denso,Denso,auto,large_cap,large_cap,large_cap,large_cap,1949,no,Japanese automotive supplier.
+aptiv,Aptiv,auto,mid_cap,large_cap,large_cap,large_cap,1994,no,NYSE:APTV.
+valeo,Valeo,auto,large_cap,large_cap,large_cap,large_cap,1923,no,French automotive supplier.
+ericsson,Ericsson,samsung,large_cap,large_cap,large_cap,large_cap,1876,no,NASDAQ:ERIC.
+nokia,Nokia,samsung,large_cap,large_cap,large_cap,large_cap,1865,no,NYSE:NOK.
+huawei,Huawei,samsung,large_cap,large_cap,large_cap,large_cap,1987,no,Private Chinese vendor.
+university|universit,University (academic),academic,academic,academic,academic,academic,,no,Generic university match.
+indian institute|institute of technology,Institute of Technology,academic,academic,academic,academic,academic,,no,IIT/IISc/IIIT etc.
+\biit |\biisc|bits pilani,Indian top institute,academic,academic,academic,academic,academic,,no,IIT/IISc/BITS Pilani.
+national institute of technology,NIT (India),academic,academic,academic,academic,academic,,no,NIT system India.
+college|polytechnic,College/Polytechnic,academic,academic,academic,academic,academic,,no,Generic college match.
+school of engineering|school of electronics|school of computer,School (academic),academic,academic,academic,academic,academic,,no,Academic school.
+dfki,DFKI,research_institute,research_institute,research_institute,research_institute,research_institute,,no,German AI research center.
+fraunhofer,Fraunhofer,research_institute,research_institute,research_institute,research_institute,research_institute,,no,German applied research.
+cea-list|cea list|cea list\b,CEA-LIST,research_institute,research_institute,research_institute,research_institute,research_institute,,no,French CEA.
+imec,imec,research_institute,research_institute,research_institute,research_institute,research_institute,,no,Belgian nano-electronics research.
+indian space|isro,ISRO,research_institute,research_institute,research_institute,research_institute,research_institute,,no,Indian Space Research Org.
+barc|bhabha atomic,BARC,research_institute,research_institute,research_institute,research_institute,research_institute,,no,Bhabha Atomic Research Centre.
+research center|research centre|national lab,Research institute (generic),research_institute,research_institute,research_institute,research_institute,research_institute,,no,Generic research center.

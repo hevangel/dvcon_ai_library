@@ -19,6 +19,14 @@ frontend/.vite/
 frontend/coverage/
 frontend/.env.local
 
+# docs/ workspace: GitHub Pages serves docs/index.html, so the HTML is
+# committed. Keep the curated CSVs + generator script in git too. Ignore the
+# venv, pycache, and the large derived per-paper tables (re-generatable).
+docs/.venv/
+docs/__pycache__/
+docs/data/per_year_*.csv
+docs/data/reproducibility.csv
+
 *.pyc
 *.pyo
 *.pyd

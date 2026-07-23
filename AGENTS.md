@@ -94,6 +94,7 @@ Build and maintain a web app that:
 - `data/paper/`: raw downloaded papers
 - `data/`: runtime corpus data root containing downloaded PDFs, extracted markdown, TEI cache, DB, Chroma, and model cache
 - `data.example/`: checked-in Horace Chan sample corpus mirroring the curated `data/` content layout without local DB/vector artifacts
+- `docs/`: standalone analysis workspace that data-mines the corpus and emits the GitHub Pages site (`generate_report.py` + curated `data/topics.csv`, `data/companies.csv`, served as `index.html`); see `docs/README.md`
 - `.agents/skills/dvcon-papers/SKILL.md`: workspace agent skill describing the MCP tools
 - `.claude-plugin/marketplace.json`: Anthropic Claude plugin marketplace catalog
 - `plugins/dvcon-papers/`: Claude plugin bundling the skill, `/dvcon` command, and `dvcon` MCP server
@@ -278,6 +279,10 @@ Verified:
 - The Markdown tab resolves those relative image links through the configured backend asset origin so inline diagrams load correctly during frontend dev on `5173` as well as when served by the backend in production.
 - The current local corpus is not year-pure anymore: it contains the 10-paper 2025 test set plus 8 Horace Chan papers from 2012-2022.
 - The checked-in `data.example/` tree is a curated sample corpus and should not be confused with the gitignored runtime `data/` directory.
+- The `docs/` directory has its own isolated `.venv` (gitignored) and does not share dependencies with `backend/.venv`; do not run `docs/generate_report.py` with the backend's Python.
+- The report's curated CSVs (`docs/data/topics.csv`, `docs/data/companies.csv`) and `docs/data/company_overrides_notes.md` are deliberately checked in so the classifications are transparent and editable. The derived per-paper tables are gitignored (re-generatable from the CSVs + DB).
+- `docs/index.html` is committed and served by GitHub Pages (source: `main` / `/docs`). After editing the curated CSVs, re-run `docs/generate_report.py` and commit the regenerated `index.html`.
+- The report reads `data/dvcon.db` directly via `sqlite3` and never writes; it can run while the backend is up. The link table is `paperauthor` (no underscore) per SQLModel's table-naming convention.
 - When chat requests include `selected_paper_ids`, the backend should keep that scope authoritative; if retrieval is weak for a generic query, it should still build context from the selected papers rather than broadening to the full corpus.
 - The frontend only reuses `previous_response_id` when the selected-paper scope is unchanged; `/clear` and failed chat requests reset the stored continuation id so follow-up turns fall back to a full prompt safely.
 - `scripts/start_backend.*` and `scripts/start_all.*` are expected to bring up GROBID automatically.
@@ -370,6 +375,27 @@ docker compose up --build
 ```bash
 ./scripts/start_mcp.sh        # or: uv run --project backend dvcon-mcp
 ```
+
+### Regenerate the corpus analysis report (GitHub Pages site)
+
+```bash
+# one-time venv setup
+py -3 -m venv docs/.venv
+docs/.venv/Scripts/python.exe -m pip install -r docs/requirements.txt
+
+# regenerate (after editing docs/data/*.csv or after a new ingest)
+docs/.venv/Scripts/python.exe docs/generate_report.py
+
+# open locally, or push to main to deploy to GitHub Pages
+docs/index.html
+```
+
+The report reads `data/dvcon.db` read-only and does NOT touch the running
+backend or its venv. The curated CSVs (`docs/data/topics.csv`,
+`docs/data/companies.csv`, `docs/data/company_overrides_notes.md`) are checked
+in; the large derived per-paper tables are gitignored (re-generatable).
+`docs/index.html` IS committed because GitHub Pages serves it directly from
+the `main` branch's `/docs` folder.
 
 ### Install the Claude plugin from the marketplace
 
