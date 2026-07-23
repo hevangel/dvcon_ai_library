@@ -1662,6 +1662,8 @@ def _racing_bar(
                "showticklabels": False,   # we use bar text labels instead
                "zeroline": False, "gridcolor": "#f1f5f9",
                "fixedrange": True},       # no zoom on y
+        # NOTE: x-axis range is set per-frame below (dynamic, not fixed).
+        # A placeholder title-only config here gets overridden.
         xaxis={"title": x_title, "gridcolor": "#f1f5f9",
                "rangemode": "nonnegative"},
         showlegend=False,
@@ -1689,13 +1691,50 @@ def _racing_bar(
                       transition=dict(duration=500, easing="cubic-in-out"),
                       pad=dict(t=10, b=10))],
     )
-    # patch slider steps to slow timing (px defaults them to 500ms)
+    # DYNAMIC X-AXIS: give each frame its own xaxis.range based on that
+    # year's max bar value. Without this, the x axis uses the global all-time
+    # max, so early frames have ~98% white space (e.g. 2010 top bar = 16 but
+    # axis goes to ~1000).
+    #
+    # Plotly applies frame.layout (and slider-step args[1]) when entering each
+    # frame during animation. We set both to be safe:
+    #   - frame.layout.xaxis.range is used during animation playback
+    #   - slider step args[1]["xaxis.range"] is used when clicking a step
+    year_max = (plot_df.groupby("year")[bar_value].max()
+                              .to_dict())
+    headroom = lambda m: [0, max(m * 1.15, 5)]   # min axis of 5 to avoid tiny bars
+    for frame in fig.frames:
+        # frames are ordered by year; match by the frame's name (= year str)
+        try:
+            yr = int(frame.name)
+        except (TypeError, ValueError):
+            continue
+        m = year_max.get(yr, 0)
+        frame.layout = {"xaxis": {"range": headroom(m)}}
+
+    # set the initial (base) x-axis range to match the first frame
+    first_year = all_years[0] if all_years else None
+    if first_year is not None:
+        initial_range = headroom(year_max.get(first_year, 10))
+    else:
+        initial_range = [0, 10]
+    fig.update_layout(xaxis={"title": x_title, "gridcolor": "#f1f5f9",
+                             "rangemode": "nonnegative",
+                             "range": initial_range})
+
+    # patch slider steps: slow timing + per-frame xaxis range
     if fig.layout.sliders:
         for step in fig.layout.sliders[0].steps:
             step.args[1]["frame"]["duration"] = 1200
             step.args[1]["frame"]["redraw"] = True
             step.args[1]["transition"]["duration"] = 500
             step.args[1]["transition"]["easing"] = "cubic-in-out"
+            # step.args[0] is the frame label (year string); set the matching xaxis range
+            try:
+                yr = int(step.args[0])
+                step.args[1]["xaxis.range"] = headroom(year_max.get(yr, 10))
+            except (TypeError, ValueError, IndexError):
+                pass
     return fig.to_html(full_html=False, include_plotlyjs=False, div_id=div_id)
 
 
