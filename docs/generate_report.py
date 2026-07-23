@@ -1503,14 +1503,24 @@ def _racing_bar(
     height: int = 560,
     cumulative: bool = True,
 ) -> str:
-    """Build a smooth top-N racing-bar animation as an HTML fragment.
+    """Build a smooth top-N RACING bar animation as an HTML fragment.
 
-    `rows` is a list of {year, <category_field>, <value_field>} dicts.
-    The animation shows the top-N categories per year, sorted descending.
-    Bars enter/exit smoothly via pre-filled zero rows + matched animation_group.
+    The bars actually slide up/down past each other as their rank changes
+    across years -- this is the real "racing bar" effect, not just bars
+    that resize in a fixed order.
 
-    `cumulative=True` ranks by running total (a classic "all-time" racing bar).
-    `cumulative=False` ranks by the value within that year only.
+    Implementation of the standard Plotly racing-bar pattern:
+    1. Pre-fill the (year x category) grid with 0 so every category has a
+       row in every frame (otherwise Plotly snaps them in/out abruptly).
+    2. Compute per-year rank (1 = biggest that year). Use a NUMERIC y-axis
+       with `y = -rank` so rank 1 sits at the top.
+    3. Hide categories whose rank > top_n by setting their value to 0 AND
+       their y-position to a slot below the visible range.
+    4. Use `animation_group=category` so Plotly smoothly interpolates each
+       bar's y-position between frames -- that's the actual "race".
+
+    `cumulative=True` ranks by running total through the year (classic
+    all-time racing bar). `cumulative=False` ranks by the year's own value.
     """
     import plotly.express as _px
 
@@ -1522,64 +1532,90 @@ def _racing_bar(
     all_years = sorted(df["year"].unique())
     all_cats = sorted(df[category_field].unique())
 
-    # pre-fill the (year x category) grid with 0 so every category has a row
-    # in every frame (bars enter/exit smoothly instead of vanishing)
+    # 1. pre-fill (year x category) grid
     grid = pd.MultiIndex.from_product([all_years, all_cats],
                                       names=["year", category_field]).to_frame(index=False)
     grid = grid.merge(df, on=["year", category_field], how="left")
     grid[value_field] = grid[value_field].fillna(0).astype(int)
 
+    # 2. compute cumulative (running total through the year) if requested
     if cumulative:
-        # rank by running total through this year
         grid = grid.sort_values([category_field, "year"])
-        grid["cum"] = grid.groupby(category_field)[value_field].cumsum()
-        rank_field = "cum"
+        grid["cumulative_value"] = grid.groupby(category_field)[value_field].cumsum()
+        rank_value = "cumulative_value"
+        bar_value = "cumulative_value"
+        x_title = "Cumulative papers through year"
     else:
-        rank_field = value_field
+        rank_value = value_field
+        bar_value = value_field
+        x_title = "Papers in year"
 
-    # only keep rows whose rank within the year is <= top_n (so the y axis
-    # only ever shows top_n categories). Use vectorized groupby rank instead
-    # of .apply() so the "year" column is preserved (pandas 3.0 drops it).
-    grid["rank"] = (grid.groupby("year")[rank_field]
-                          .rank(method="first", ascending=False))
-    grid.loc[grid["rank"] > top_n, value_field] = 0
-    grid.loc[grid["rank"] > top_n, rank_field] = 0
+    # 3. compute per-year rank (1 = biggest). method="first" breaks ties
+    # deterministically so the rank is stable across runs.
+    grid["rank"] = (grid.groupby("year")[rank_value]
+                          .rank(method="first", ascending=False).astype(int))
 
-    # Plotly needs every category present in every frame for smooth transitions;
-    # we've zeroed the non-top-N ones but we still need to plot only the top_n.
-    # The trick: plot all categories, but set the yaxis range to [0, top_n]
-    # and order by total descending -- the bottom categories get squeezed off.
-    # Use cumulative value for ordering when cumulative=True so the order is
-    # the racing order, not yearly.
+    # 4. set y-position: -rank puts rank 1 at the top of the chart.
+    # Categories with rank > top_n get parked at a y below the visible
+    # range so they're hidden but still tracked for animation_group.
+    BELOW = top_n + 5  # parking slot for off-screen categories
+    grid["y_pos"] = -grid["rank"].clip(upper=BELOW)
+    # but hide their value too (length 0)
+    grid[bar_value] = grid[bar_value].where(grid["rank"] <= top_n, 0)
+
+    # 5. build the figure. CRITICAL pieces:
+    #    - y is NUMERIC (y_pos), not the category -> allows smooth interpolation
+    #    - animation_group = category_field -> Plotly tracks each bar across frames
     plot_df = grid.copy()
-    if cumulative:
-        plot_df[value_field] = plot_df["cum"]  # plot cumulative as the bar length
-    # but for ranking display in non-cumulative mode, plot the raw value
-
     fig = _px.bar(
-        plot_df, y=category_field, x=value_field, color=category_field,
-        orientation="h", animation_frame="year",
-        animation_group=category_field,
-        range_x=[0, max(plot_df[value_field].max() * 1.1, 10)],
+        plot_df,
+        x=bar_value, y="y_pos",
+        color=category_field,
+        text=category_field,                # category name rendered on the bar
+        orientation="h",
+        animation_frame="year",
+        animation_group=category_field,     # <-- enables the slide animation
+        range_x=[0, max(plot_df[bar_value].max() * 1.15, 10)],
         title=title,
         color_discrete_sequence=color_palette or _px.colors.qualitative.Bold,
+        hover_data={category_field: False, bar_value: True,
+                    "rank": True, "y_pos": False},
     )
-    # sort categories by total descending so the y-axis layout matches rank
-    total_order = (plot_df.groupby(category_field)[value_field].sum()
-                              .sort_values(ascending=False).index.tolist())
+    fig.update_traces(
+        textposition="inside",
+        texttemplate="%{text}",
+        insidetextanchor="start",
+        cliponaxis=False,
+        hovertemplate=("<b>%{text}</b><br>"
+                       + ("Cumulative papers: %{x}<br>" if cumulative else "Papers: %{x}<br>")
+                       + "<extra></extra>"),
+    )
+
+    # build a stable color map by all-time-total descending so each category
+    # keeps the same color throughout the animation
+    total_order = (df.groupby(category_field)[value_field].sum()
+                       .sort_values(ascending=False).index.tolist())
+    palette = color_palette or _px.colors.qualitative.Bold
+    color_map = {cat: palette[i % len(palette)] for i, cat in enumerate(total_order)}
+    for trace in fig.data:
+        cat = trace.name
+        if cat in color_map:
+            trace.marker.color = color_map[cat]
+
     fig.update_layout(
-        yaxis={"categoryorder": "array",
-               "categoryarray": total_order[::-1],  # ascending visually (top = largest)
-               "range": [-0.5, top_n - 0.5]},
+        # numeric y axis: rank 1 (y=-1) at the top, rank top_n (y=-top_n) at bottom
+        yaxis={"range": [-top_n - 0.5, -0.5],
+               "showticklabels": False,   # we use bar text labels instead
+               "zeroline": False, "gridcolor": "#f1f5f9",
+               "fixedrange": True},       # no zoom on y
+        xaxis={"title": x_title, "gridcolor": "#f1f5f9",
+               "rangemode": "nonnegative"},
         showlegend=False,
-        margin=dict(l=10, r=10, t=60, b=10),
+        margin=dict(l=10, r=10, t=60, b=60),
         height=height,
-        xaxis_title=("Cumulative papers through year" if cumulative
-                     else "Papers in year"),
-        yaxis_title="",
-        # SLOW, SMOOTH animation: 1200ms per frame, 500ms transition,
-        # cubic-in-out easing. The default 500ms is too fast to read.
-        updatemenus=[dict(type="buttons", showactive=False, y=-0.12, x=0.5,
+        plot_bgcolor="white",
+        # SLOW, SMOOTH animation: 1200ms per frame, 500ms cubic-in-out transition
+        updatemenus=[dict(type="buttons", showactive=False, y=-0.13, x=0.5,
                           xanchor="center", yanchor="top",
                           buttons=[dict(label="&#9654; Play slow",
                                         method="animate",
@@ -1599,7 +1635,7 @@ def _racing_bar(
                       transition=dict(duration=500, easing="cubic-in-out"),
                       pad=dict(t=10, b=10))],
     )
-    # also slow the per-frame default duration that Plotly sets
+    # patch slider steps to slow timing (px defaults them to 500ms)
     if fig.layout.sliders:
         for step in fig.layout.sliders[0].steps:
             step.args[1]["frame"]["duration"] = 1200
