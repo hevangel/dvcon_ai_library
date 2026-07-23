@@ -188,10 +188,18 @@ CITY_TO_COUNTRY = {
     "noida": "IN", "gurgaon": "IN", "kolkata": "IN", "ahmedabad": "IN",
     "surat": "IN", "kharagpur": "IN", "kanpur": "IN", "roorkee": "IN",
     "guwahati": "IN", "varanasi": "IN", "indore": "IN", "jaipur": "IN",
-    "san jose": "US", "san jose ca": "US", "san francisco": "US",
-    "san diego": "US", "austin": "US", "boston": "US", "folsom": "US",
-    "chandler": "US", "fort collins": "US", "raleigh": "US",
+    # Silicon Valley / Bay Area (commonly missing from country field)
+    "san jose": "US", "san francisco": "US", "san diego": "US",
     "santa clara": "US", "sunnyvale": "US", "irvine": "US",
+    "fremont": "US", "mountain view": "US", "cupertino": "US",
+    "milpitas": "US", "menlo park": "US", "palo alto": "US",
+    "redwood city": "US", "foster city": "US", "campbell": "US",
+    "morgan hill": "US", "el segundo": "US", "calabasas": "US",
+    # Other US tech hubs
+    "austin": "US", "boston": "US", "folsom": "US",
+    "chandler": "US", "fort collins": "US", "raleigh": "US",
+    "beaverton": "US", "wilsonville": "US", "andover": "US",
+    "chelmsford": "US", "waltham": "US", "chicago": "US",
     "munich": "DE", "münchen": "DE", "muenchen": "DE", "neubiberg": "DE",
     "dresden": "DE", "feldkirchen": "DE",
     "seoul": "KR", "hwaseong": "KR", "suwon": "KR",
@@ -213,6 +221,36 @@ CITY_TO_COUNTRY = {
     "cairo": "EG",
     "hanoi": "VN", "ho chi minh": "VN",
 }
+
+# US state names + 2-letter postal codes. Matched as a fallback so that
+# "Fremont, CA" / "Mountain View, CA" / "Wilsonville, OR" / "Andover, MA"
+# all resolve to US even when no country name is present.
+US_STATES: dict[str, str] = {
+    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
+    "california": "CA", "colorado": "CO", "connecticut": "CT",
+    "delaware": "DE", "florida": "FL", "georgia": "GA", "hawaii": "HI",
+    "idaho": "ID", "illinois": "IL", "indiana": "IN", "iowa": "IA",
+    "kansas": "KS", "kentucky": "KY", "louisiana": "LA", "maine": "ME",
+    "maryland": "MD", "massachusetts": "MA", "michigan": "MI",
+    "minnesota": "MN", "mississippi": "MS", "missouri": "MO",
+    "montana": "MT", "nebraska": "NE", "nevada": "NV",
+    "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM",
+    "new york": "NY", "north carolina": "NC", "north dakota": "ND",
+    "ohio": "OH", "oklahoma": "OK", "oregon": "OR", "pennsylvania": "PA",
+    "rhode island": "RI", "south carolina": "SC", "south dakota": "SD",
+    "tennessee": "TN", "texas": "TX", "utah": "UT", "vermont": "VT",
+    "virginia": "VA", "washington": "WA", "west virginia": "WV",
+    "wisconsin": "WI", "wyoming": "WY",
+    "oregon": "OR",
+}
+# 2-letter codes -- require ", XX" or " XX" boundary so "IN" / "OR" / "MA"
+# don't false-positive on regular English words ("in", "or", "Massachusetts").
+US_STATE_CODE_RE = re.compile(
+    r"(?:,\s*|[\s,])(?:"
+    + "|".join(re.escape(code) for code in sorted(set(US_STATES.values()),
+                                                    key=lambda c: -len(c)))
+    + r")\b(?!\s*@)"
+)
 
 _COUNTRY_RE = re.compile(r"[A-Z]{2}")
 
@@ -293,6 +331,22 @@ def extract_countries_from_affiliations(blob: str) -> set[str]:
             if len(alias) >= 4 and re.search(r"\b" + re.escape(alias) + r"\b", low):
                 found.add(iso)
                 break
+        if matched:
+            continue
+        # try US state name (multi-word, word-bounded) -- catches
+        # "Mentor Graphics Fremont, California" / "Wilsonville, Oregon"
+        for state_name in US_STATES:
+            if re.search(r"\b" + re.escape(state_name) + r"\b", low):
+                found.add("US")
+                matched = True
+                break
+        if matched:
+            continue
+        # try US state code with comma context -- catches "Fremont, CA" /
+        # "Mountain View, CA" / "Andover, MA" without false-positiving on
+        # the words "in", "or", "ma" (which the bare 2-letter codes would)
+        if US_STATE_CODE_RE.search(frag):
+            found.add("US")
     return found
 
 
