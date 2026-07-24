@@ -1617,28 +1617,76 @@ def _racing_bar(
     # but hide their value too (length 0)
     grid[bar_value] = grid[bar_value].where(grid["rank"] <= top_n, 0)
 
+    # ---- MONTHLY INTERPOLATION ----------------------------------------------
+    # The user wants the animation to play on a monthly timeframe so bars grow
+    # and swap positions smoothly instead of jumping year-to-year. We expand
+    # the yearly grid into 12 sub-frames per year (Jan, Feb, ..., Dec) with
+    # LINEAR interpolation of bar_value between consecutive years. Rank + y_pos
+    # are recomputed at each sub-frame so bars can overtake each other mid-year
+    # -- this is the actual "racing" feel.
+    #
+    # We use [0.0, 1/12, 2/12, ..., 11/12] as the 12 sub-frames; the year-end
+    # value (1.0) is the start of the NEXT year's frame, so we don't duplicate.
+    n_subframes = 12
+    fracs = [i / n_subframes for i in range(n_subframes)]   # 0/12 ... 11/12
+
+    # sort so we can interpolate year-to-year
+    grid = grid.sort_values([category_field, "year"]).reset_index(drop=True)
+
+    # for each (cat, year), we want the bar_value at the 12 sub-frames
+    # leading UP TO this year's value from the previous year's value.
+    # We compute: prev_value per (cat, year) = value at year-1 (or 0 if first)
+    grid["prev_value"] = grid.groupby(category_field)[bar_value].shift(1, fill_value=0)
+
+    monthly_rows = []
+    # also need a stable frame label for plotting (animation_frame must be a
+    # sortable string; we use "YYYY-MM" zero-padded)
+    for _, row in grid.iterrows():
+        for i, frac in enumerate(fracs):
+            interp_value = row["prev_value"] + (row[bar_value] - row["prev_value"]) * frac
+            month = i + 1
+            frame_label = f"{int(row['year'])}-{month:02d}"
+            monthly_rows.append({
+                category_field: row[category_field],
+                "frame": frame_label,
+                "year": int(row["year"]),
+                "month": month,
+                bar_value: interp_value,
+                "prev_value": row["prev_value"],
+            })
+    monthly = pd.DataFrame(monthly_rows)
+
+    # recompute rank + y_pos per sub-frame (so swaps happen mid-year)
+    monthly["rank"] = (monthly.groupby("frame")[bar_value]
+                              .rank(method="first", ascending=False).astype(int))
+    monthly["y_pos"] = -monthly["rank"].clip(upper=BELOW)
+    # hide off-top-N bars (length 0)
+    monthly[bar_value] = monthly[bar_value].where(monthly["rank"] <= top_n, 0)
+
     # 5. build the figure. CRITICAL pieces:
     #    - y is NUMERIC (y_pos), not the category -> allows smooth interpolation
     #    - animation_group = category_field -> Plotly tracks each bar across frames
-    plot_df = grid.copy()
+    #    - animation_frame = monthly "frame" label (YYYY-MM)
+    plot_df = monthly.copy()
     fig = _px.bar(
         plot_df,
         x=bar_value, y="y_pos",
         color=category_field,
         text=category_field,                # category name rendered on the bar
         orientation="h",
-        animation_frame="year",
+        animation_frame="frame",
         animation_group=category_field,     # <-- enables the slide animation
+        category_orders={"frame": sorted(plot_df["frame"].unique())},
         range_x=[0, max(plot_df[bar_value].max() * 1.15, 10)],
         title=title,
         color_discrete_sequence=color_palette or _px.colors.qualitative.Bold,
         hover_data={category_field: False, bar_value: True,
-                    "rank": True, "y_pos": False},
+                    "rank": True, "y_pos": False, "year": False, "month": False,
+                    "prev_value": False, "frame": False},
     )
     fig.update_traces(
-        textposition="inside",
+        textposition="outside",     # label sits at the right tip of the bar, always visible
         texttemplate="%{text}",
-        insidetextanchor="start",
         cliponaxis=False,
         hovertemplate=("<b>%{text}</b><br>"
                        + ("Cumulative papers: %{x}<br>" if cumulative else "Papers: %{x}<br>")
@@ -1670,15 +1718,18 @@ def _racing_bar(
         margin=dict(l=10, r=10, t=60, b=60),
         height=height,
         plot_bgcolor="white",
-        # SLOW, SMOOTH animation: 1200ms per frame, 500ms cubic-in-out transition
+        # MONTHLY animation: each sub-frame is short (90ms) with a quick
+        # linear transition (80ms) so 12 sub-frames pass in ~2 seconds per year.
+        # Linear easing matches the linear interpolation of the values, giving
+        # the smooth "growing bars" feel.
         updatemenus=[dict(type="buttons", showactive=False, y=-0.13, x=0.5,
                           xanchor="center", yanchor="top",
-                          buttons=[dict(label="&#9654; Play slow",
+                          buttons=[dict(label="&#9654; Play",
                                         method="animate",
                                         args=[None,
-                                              dict(frame=dict(duration=1200, redraw=True),
-                                                   transition=dict(duration=500,
-                                                                   easing="cubic-in-out"),
+                                              dict(frame=dict(duration=90, redraw=True),
+                                                   transition=dict(duration=80,
+                                                                   easing="linear"),
                                                    fromcurrent=True)]),
                                    dict(label="&#10074;&#10074; Pause",
                                         method="animate",
@@ -1687,54 +1738,44 @@ def _racing_bar(
                                                    mode="immediate",
                                                    transition=dict(duration=0))])])],
         sliders=[dict(active=0, x=0, y=-0.05, len=1.0,
-                      currentvalue=dict(prefix="Year: "),
+                      currentvalue=dict(prefix="Month: "),
                       transition=dict(duration=500, easing="cubic-in-out"),
                       pad=dict(t=10, b=10))],
     )
     # DYNAMIC X-AXIS: give each frame its own xaxis.range based on that
-    # year's max bar value. Without this, the x axis uses the global all-time
-    # max, so early frames have ~98% white space (e.g. 2010 top bar = 16 but
-    # axis goes to ~1000).
+    # frame's max bar value. Without this, the x axis uses the global all-time
+    # max, so early frames have ~98% white space.
     #
     # Plotly applies frame.layout (and slider-step args[1]) when entering each
     # frame during animation. We set both to be safe:
     #   - frame.layout.xaxis.range is used during animation playback
     #   - slider step args[1]["xaxis.range"] is used when clicking a step
-    year_max = (plot_df.groupby("year")[bar_value].max()
+    frame_max = (plot_df.groupby("frame")[bar_value].max()
                               .to_dict())
     headroom = lambda m: [0, max(m * 1.15, 5)]   # min axis of 5 to avoid tiny bars
     for frame in fig.frames:
-        # frames are ordered by year; match by the frame's name (= year str)
-        try:
-            yr = int(frame.name)
-        except (TypeError, ValueError):
-            continue
-        m = year_max.get(yr, 0)
+        # frame.name is now a "YYYY-MM" string
+        m = frame_max.get(frame.name, 0)
         frame.layout = {"xaxis": {"range": headroom(m)}}
 
     # set the initial (base) x-axis range to match the first frame
-    first_year = all_years[0] if all_years else None
-    if first_year is not None:
-        initial_range = headroom(year_max.get(first_year, 10))
+    sorted_frames = sorted(plot_df["frame"].unique())
+    first_frame = sorted_frames[0] if sorted_frames else None
+    if first_frame is not None:
+        initial_range = headroom(frame_max.get(first_frame, 10))
     else:
         initial_range = [0, 10]
     fig.update_layout(xaxis={"title": x_title, "gridcolor": "#f1f5f9",
                              "rangemode": "nonnegative",
                              "range": initial_range})
 
-    # patch slider steps: slow timing + per-frame xaxis range
+    # patch slider steps: monthly timing (90ms per sub-frame, linear easing)
     if fig.layout.sliders:
         for step in fig.layout.sliders[0].steps:
-            step.args[1]["frame"]["duration"] = 1200
+            step.args[1]["frame"]["duration"] = 90
             step.args[1]["frame"]["redraw"] = True
-            step.args[1]["transition"]["duration"] = 500
-            step.args[1]["transition"]["easing"] = "cubic-in-out"
-            # step.args[0] is the frame label (year string); set the matching xaxis range
-            try:
-                yr = int(step.args[0])
-                step.args[1]["xaxis.range"] = headroom(year_max.get(yr, 10))
-            except (TypeError, ValueError, IndexError):
-                pass
+            step.args[1]["transition"]["duration"] = 80
+            step.args[1]["transition"]["easing"] = "linear"
     return fig.to_html(full_html=False, include_plotlyjs=False, div_id=div_id)
 
 
