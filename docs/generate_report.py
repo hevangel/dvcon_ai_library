@@ -1672,6 +1672,14 @@ def _racing_bar(
     monthly["y_pos"] = -monthly["rank"].clip(upper=BELOW)
     # hide off-top-N bars (length 0)
     monthly[bar_value] = monthly[bar_value].where(monthly["rank"] <= top_n, 0)
+    # CRITICAL: blank the display text for off-screen bars. Otherwise Plotly
+    # renders the category name at x=0 (the bar's hidden length), which is
+    # what makes labels appear to fly in from the top-left of the chart.
+    # By blanking the text when rank > top_n, the label is gone as soon as
+    # the bar leaves the visible range, and reappears at the bar's new
+    # position when it re-enters.
+    monthly["display_text"] = monthly.apply(
+        lambda r: r[category_field] if r["rank"] <= top_n else "", axis=1)
 
     # 5. build the figure. CRITICAL pieces:
     #    - y is NUMERIC (y_pos), not the category -> allows smooth interpolation
@@ -1682,7 +1690,7 @@ def _racing_bar(
         plot_df,
         x=bar_value, y="y_pos",
         color=category_field,
-        text=category_field,                # category name rendered on the bar
+        text="display_text",                # blank for off-screen bars (fixes top-left fly-in)
         orientation="h",
         animation_frame="frame",
         animation_group=category_field,     # <-- enables the slide animation
@@ -1690,15 +1698,15 @@ def _racing_bar(
         range_x=[0, max(plot_df[bar_value].max() * 1.15, 10)],
         title=title,
         color_discrete_sequence=color_palette or _px.colors.qualitative.Bold,
-        hover_data={category_field: False, bar_value: True,
+        hover_data={category_field: True, bar_value: True,
                     "rank": True, "y_pos": False, "year": False, "month": False,
-                    "prev_value": False, "frame": False},
+                    "prev_value": False, "frame": False, "display_text": False},
     )
     fig.update_traces(
         textposition="outside",     # label sits at the right tip of the bar, always visible
         texttemplate="%{text}",
         cliponaxis=False,
-        hovertemplate=("<b>%{text}</b><br>"
+        hovertemplate=("<b>%{customdata[0]}</b><br>"
                        + ("Cumulative papers: %{x}<br>" if cumulative else "Papers: %{x}<br>")
                        + "<extra></extra>"),
     )
@@ -1748,7 +1756,7 @@ def _racing_bar(
                                                    mode="immediate",
                                                    transition=dict(duration=0))])])],
         sliders=[dict(active=0, x=0, y=-0.05, len=1.0,
-                      currentvalue=dict(prefix="Month: "),
+                      currentvalue=dict(prefix="Year: ", visible=True),
                       transition=dict(duration=500, easing="cubic-in-out"),
                       pad=dict(t=10, b=10))],
     )
@@ -1762,14 +1770,32 @@ def _racing_bar(
     headroom = lambda m: [0, max(m * 1.15, 5)]   # min axis of 5 to avoid tiny bars
 
     if fixed_xaxis:
-        # one global range based on the all-time max bar value
-        global_max = float(plot_df[bar_value].max())
-        fixed_range = headroom(global_max)
+        # PER-YEAR x-axis range (compromise between per-frame and global):
+        # all 12 monthly sub-frames of a given year share the same range
+        # (= that year's max bar value), and the range only changes when
+        # the animation crosses into a new year. This stops the per-month
+        # flicker while still scaling between years so there's no big empty
+        # space to the right of small years.
+        # We also add a longer transition between years (set per-frame below)
+        # so the axis resize is smooth.
+        year_max = (plot_df.groupby("year")[bar_value].max().to_dict())
+        for frame in fig.frames:
+            # frame.name is "YYYY-MM"; extract the year
+            try:
+                yr = int(frame.name.split("-")[0])
+            except (AttributeError, ValueError, IndexError):
+                continue
+            m = year_max.get(yr, 0)
+            frame.layout = {"xaxis": {"range": headroom(m)}}
+        # initial layout range = first year's max
+        sorted_years = sorted(plot_df["year"].unique())
+        first_year = int(sorted_years[0]) if len(sorted_years) else None
+        initial_range = headroom(year_max.get(first_year, 10)) if first_year else [0, 10]
         fig.update_layout(xaxis={"title": x_title, "gridcolor": "#f1f5f9",
                                  "rangemode": "nonnegative",
-                                 "range": fixed_range, "fixedrange": True})
+                                 "range": initial_range})
     else:
-        # per-frame ranges
+        # per-frame ranges (every monthly sub-frame scales independently)
         frame_max = (plot_df.groupby("frame")[bar_value].max().to_dict())
         for frame in fig.frames:
             m = frame_max.get(frame.name, 0)
@@ -1784,13 +1810,49 @@ def _racing_bar(
                                  "rangemode": "nonnegative",
                                  "range": initial_range})
 
-    # patch slider steps: monthly timing (90ms per sub-frame, linear easing)
+    # patch slider steps:
+    # - monthly timing (90ms per sub-frame, linear easing)
+    # - relabel each step to show ONLY the year (the frame name is "YYYY-MM"
+    #   but the user wants the slider to read "2010", "2011", ...). Slider
+    #   steps are IMMUTABLE in Plotly, so we have to rebuild each step.
+    # - blank all-but-the-first step label per year so the slider axis isn't
+    #   cluttered with 12 ticks per year
     if fig.layout.sliders:
-        for step in fig.layout.sliders[0].steps:
-            step.args[1]["frame"]["duration"] = 90
-            step.args[1]["frame"]["redraw"] = True
-            step.args[1]["transition"]["duration"] = 80
-            step.args[1]["transition"]["easing"] = "linear"
+        old_steps = fig.layout.sliders[0].steps
+        new_steps = []
+        seen_years: set[int] = set()
+        for step in old_steps:
+            # apply monthly timing to the args
+            args_list = list(step.args)
+            args_dict = dict(args_list[1]) if len(args_list) > 1 else {}
+            args_dict["frame"] = dict(args_dict.get("frame", {}))
+            args_dict["frame"]["duration"] = 90
+            args_dict["frame"]["redraw"] = True
+            args_dict["transition"] = dict(args_dict.get("transition", {}))
+            args_dict["transition"]["duration"] = 80
+            args_dict["transition"]["easing"] = "linear"
+            # extract year from the frame name
+            frame_name = args_list[0][0] if args_list and args_list[0] else ""
+            try:
+                yr = int(str(frame_name).split("-")[0])
+            except (ValueError, IndexError):
+                yr = None
+            # label = year on first sub-frame of each year, blank otherwise
+            if yr is not None and yr not in seen_years:
+                label = str(yr)
+                seen_years.add(yr)
+            else:
+                label = ""
+            # rebuild the step with the new label (steps are immutable)
+            from plotly.graph_objs import layout as _layout_mod
+            new_step = _layout_mod.slider.Step(
+                args=[args_list[0], args_dict],
+                label=label,
+                method=step.method,
+                visible=step.visible if step.visible is not None else True,
+            )
+            new_steps.append(new_step)
+        fig.layout.sliders[0].steps = new_steps
     return fig.to_html(full_html=False, include_plotlyjs=False, div_id=div_id)
 
 
