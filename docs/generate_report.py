@@ -719,10 +719,11 @@ def build_q2(papers: list[PaperRow]) -> tuple[str, list[str]]:
     racing_html = _racing_bar(
         by_year_df[["year", "topic", "papers"]].to_dict("records"),
         category_field="topic", value_field="papers",
-        title="Racing-bar: cumulative papers per topic (top-10 over time)",
+        title="Racing-bar: papers per topic BY YEAR (top-10 per frame)",
         div_id="q2_racing",
         top_n=10,
-        cumulative=True,
+        cumulative=False,        # use the year's own count, not running total
+        fixed_xaxis=True,        # pin x-axis so it doesn't flicker frame-to-frame
         color_palette=px.colors.qualitative.Bold,
     )
 
@@ -859,10 +860,11 @@ def build_q2b(papers: list[PaperRow]) -> tuple[str, list[str]]:
     racing_html = _racing_bar(
         by_year_df.to_dict("records"),
         category_field="language", value_field="papers",
-        title="Racing-bar: programming / verification languages per year (top-10)",
+        title="Racing-bar: programming / verification languages BY YEAR (top-10 per frame)",
         div_id="q2b_lang_racing",
         top_n=10,
-        cumulative=True,
+        cumulative=False,        # use the year's own count -- out-of-favor languages drop off
+        fixed_xaxis=True,        # pin x-axis so it doesn't flicker frame-to-frame
         color_palette=px.colors.qualitative.Vivid,
         height=560,
     )
@@ -1031,6 +1033,7 @@ def build_q3(papers: list[PaperRow]) -> tuple[str, list[str]]:
         div_id="q3_company_racing",
         top_n=10,
         cumulative=True,
+        fixed_xaxis=True,        # pin x-axis (cumulative max) so it doesn't flicker
         color_palette=px.colors.qualitative.Set3,
         height=560,
     )
@@ -1556,6 +1559,7 @@ def _racing_bar(
     color_palette: list[str] | None = None,
     height: int = 560,
     cumulative: bool = True,
+    fixed_xaxis: bool = False,
 ) -> str:
     """Build a smooth top-N RACING bar animation as an HTML fragment.
 
@@ -1575,6 +1579,12 @@ def _racing_bar(
 
     `cumulative=True` ranks by running total through the year (classic
     all-time racing bar). `cumulative=False` ranks by the year's own value.
+
+    `fixed_xaxis=True` pins the x-axis range to the all-time max so it
+    doesn't flicker between frames. Use this when the values fluctuate
+    a lot year-to-year (non-cumulative mode) -- a moving axis would be
+    distracting and would also rescale the bar widths, making them hard
+    to compare across frames.
     """
     import plotly.express as _px
 
@@ -1742,32 +1752,37 @@ def _racing_bar(
                       transition=dict(duration=500, easing="cubic-in-out"),
                       pad=dict(t=10, b=10))],
     )
-    # DYNAMIC X-AXIS: give each frame its own xaxis.range based on that
-    # frame's max bar value. Without this, the x axis uses the global all-time
-    # max, so early frames have ~98% white space.
+    # X-AXIS RANGE: either DYNAMIC (per-frame) or FIXED (all-time max).
     #
-    # Plotly applies frame.layout (and slider-step args[1]) when entering each
-    # frame during animation. We set both to be safe:
-    #   - frame.layout.xaxis.range is used during animation playback
-    #   - slider step args[1]["xaxis.range"] is used when clicking a step
-    frame_max = (plot_df.groupby("frame")[bar_value].max()
-                              .to_dict())
+    # - DYNAMIC (default): each frame scales to its own max -- great for
+    #   cumulative racing bars where values monotonically grow.
+    # - FIXED: pin to the all-time max. Use this for NON-cumulative mode
+    #   where values fluctuate year-to-year; a moving axis would flicker
+    #   constantly and also rescale bar widths, making comparisons hard.
     headroom = lambda m: [0, max(m * 1.15, 5)]   # min axis of 5 to avoid tiny bars
-    for frame in fig.frames:
-        # frame.name is now a "YYYY-MM" string
-        m = frame_max.get(frame.name, 0)
-        frame.layout = {"xaxis": {"range": headroom(m)}}
 
-    # set the initial (base) x-axis range to match the first frame
-    sorted_frames = sorted(plot_df["frame"].unique())
-    first_frame = sorted_frames[0] if sorted_frames else None
-    if first_frame is not None:
-        initial_range = headroom(frame_max.get(first_frame, 10))
+    if fixed_xaxis:
+        # one global range based on the all-time max bar value
+        global_max = float(plot_df[bar_value].max())
+        fixed_range = headroom(global_max)
+        fig.update_layout(xaxis={"title": x_title, "gridcolor": "#f1f5f9",
+                                 "rangemode": "nonnegative",
+                                 "range": fixed_range, "fixedrange": True})
     else:
-        initial_range = [0, 10]
-    fig.update_layout(xaxis={"title": x_title, "gridcolor": "#f1f5f9",
-                             "rangemode": "nonnegative",
-                             "range": initial_range})
+        # per-frame ranges
+        frame_max = (plot_df.groupby("frame")[bar_value].max().to_dict())
+        for frame in fig.frames:
+            m = frame_max.get(frame.name, 0)
+            frame.layout = {"xaxis": {"range": headroom(m)}}
+        sorted_frames = sorted(plot_df["frame"].unique())
+        first_frame = sorted_frames[0] if sorted_frames else None
+        if first_frame is not None:
+            initial_range = headroom(frame_max.get(first_frame, 10))
+        else:
+            initial_range = [0, 10]
+        fig.update_layout(xaxis={"title": x_title, "gridcolor": "#f1f5f9",
+                                 "rangemode": "nonnegative",
+                                 "range": initial_range})
 
     # patch slider steps: monthly timing (90ms per sub-frame, linear easing)
     if fig.layout.sliders:
