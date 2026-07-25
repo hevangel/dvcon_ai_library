@@ -27,6 +27,11 @@ docs/__pycache__/
 docs/data/per_year_*.csv
 docs/data/reproducibility.csv
 
+# llm-wiki: keep the markdown pages + extractor + manifest in git.
+# The _sources/ dir is large (50 JSON files with abstracts + chunks) and
+# regeneratable from the DB, so ignore it.
+llm-wiki/_sources/
+
 *.pyc
 *.pyo
 *.pyd
