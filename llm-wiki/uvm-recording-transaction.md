@@ -1,0 +1,40 @@
+# UVM Transaction Recording and Waveform Annotation
+
+> *"You just ran a ten-minute simulation, the scoreboard screamed, and now you are looking at a waveform that is 12 million cycles wide trying to find the one AXI beat that went wrong. This is the gap transaction recording was invented to close. Instead of squinting at signal edges, you annotate the waveform with the transactions themselves — `begin_tr`, `end_tr`, `do_record`, `uvm_record_field` — so the viewer can show you 'write of 0xDEAD to addr 0x4000' overlaying the wiggling lines. Rich Edelman has been DVCon's resident evangelist for this for years, arguing that 'verification productivity requires doing more with less' and that transactions are 'an easy way to see the big picture with very little effort or code.' The machinery is older than most of your testbench: the Transaction Recording API was first proposed as a Verilog draft standard in 2003, never formally adopted, but quietly implemented by every vendor in nearly identical form. So what is UVM actually doing when it records a transaction, and how does it talk to the waveform viewer?"*
+
+## What it is
+
+UVM has a **built-in transaction recording mechanism** for sequences and sequence items. When a sequence is started, a "begin transaction" is emitted; when it ends, an "end transaction" fires. This automation is handy because it captures the stimulus-generation side of the world with almost no code — but, as Edelman notes, "the transactions recorded are sub-optimal," so most serious testbenches go further [Facilitating Transactions in VHDL and SystemVerilog, 2020]. The lower-level API a monitor or driver calls directly is a small set of eight entry points — `begin_transaction`, `end_transaction`, `add_attribute`, `free_transaction`, plus the rarely-used `add_relation` and `delete_transaction` — originally proposed as a Verilog draft standard in 2003 and implemented, in nearly the same shape, by every major simulator vendor [Facilitating Transactions in VHDL and SystemVerilog, 2020].
+
+The UVM class-library side of this is `uvm_transaction` and its `uvm_recorder` argument. A transaction class overrides **`do_record(uvm_recorder recorder)`** and inside it calls `` `uvm_record_field("name", value) `` for each attribute worth showing in the viewer [Facilitating Transactions in VHDL and SystemVerilog, 2020]. A monitor wraps this in the lifecycle: it creates a **stream** for its interface, loops recognizing transactions on READY/VALID, calls `begin_transaction` to get a handle, adds attributes as it observes them, then `end_transaction` and `free_transaction` to close out. Multiple in-flight transactions are tracked by handle, so the API correctly overlaps concurrent beats without hints from the user [Facilitating Transactions in VHDL and SystemVerilog, 2020].
+
+## How it's used in practice
+
+The simplest pattern is **publisher/subscriber**: a monitor recognizes a transaction and creates a class object representing it but does *not* do the recording itself. It publishes that object to any subscriber — a coverage subscriber, a transaction-recording subscriber, a scoreboard — and each one decides what to do. This separation of concerns keeps the monitor clean and lets recording be added or removed without touching the monitor's internals [Facilitating Transactions in VHDL and SystemVerilog, 2020]. For a real example, Edelman instruments a `transaction` class with `do_record` that emits name, read/write, address, data, and duration fields, and then a UVVM-style VHDL testbench (bitvis_irqc) creates two streams — write and check — so the viewer clearly shows the two distinct activities side by side [Facilitating Transactions in VHDL and SystemVerilog, 2020]. Modeling decisions like "one stream or two" are what make a recorded waveform readable versus a wall of overlapping boxes.
+
+Recording is also language-agnostic in practice. Edelman's paper shows the same API surface ported across SystemVerilog, Verilog, and VHDL, with SystemVerilog `bind` and VHDL `bind` both used to drop a monitor module into the DUT and capture the transaction stream. The `recording_detail` knob on each UVM component (set via `config_db`) controls how much gets recorded, and Edelman elsewhere points out that the type mismatch issues around `recording_detail` are a recurring source of confusion — different components reading it as different types is exactly the kind of "configuration madness" that bites at integration time [Avoiding Configuration Madness The Easy Way Rich Edelman, 2023].
+
+## Pitfalls and where the field is heading
+
+The first pitfall is **vendor lock-in by another name**. The Transaction Recording API is small and lightweight, deployable in UVM, SystemVerilog, Verilog, VHDL, and other languages — but "this is a small, lightweight API, *but it is vendor specific*." Conveniently, each vendor has implemented roughly the same API, and the 2003 proposal "has become a standard — at least a recommendation for the vendors," but it was never formally adopted as an IEEE standard [Facilitating Transactions in VHDL and SystemVerilog, 2020]. The practical risk is that recordings made on one simulator do not always render identically on another, and portability claims need testing.
+
+The deeper frontier is **making the recording itself reversible**. Bonsor-Matthews and Law introduce **time-travel debugging for High-Level Synthesis code**, where the state of a design can be examined by going backwards and forwards in time, letting the root cause of bugs — "including challenging concurrency bugs" — be found with ease and a new codebase understood rapidly. Crucially, "it is possible to extract 'waveforms' from a time-travel recording," so the same record-replay idea that drives transaction recording now extends to full bidirectional state inspection [Time-Travel Debugging for High-Level Synthesis Code, 2025]. Variants of this work appeared across DVCon US and Europe in 2025 [Time-Travel Debugging for HLS Code, 2025], pointing to a converging trend: the waveform of the future is not a static dump but a navigable recording. Transaction recording — with its begin/end/attribute handles — is the conceptual ancestor. The field is heading toward recordings you can scrub, query, and rewind, with UVM's `do_record` hooks as the structured-annotation layer that makes those recordings legible.
+
+## See also
+
+- [uvm_component vs uvm_object — the Object Graph](uvm-component-object-graph.md) — `uvm_transaction` and `uvm_recorder` live on the object side of the seam.
+- [Debug Techniques and Tools](debug-techniques.md) — the broader debug toolkit that waveform annotation feeds into.
+- [UVM Scoreboards and Predictors](uvm-scoreboards.md) — scoreboards consume the same transaction objects that get recorded.
+- [UVM Configuration Database (config_db)](uvm-config-db.md) — `recording_detail` is propagated through config_db and is a common source of type-mismatch bugs.
+- [OSVVM — Open Source VHDL Verification Methodology](osvvm-vhdl.md) — the VHDL-side library Edelman integrates with transaction recording.
+
+## Grounded in these DVCon papers
+
+- **Facilitating Transactions in VHDL and SystemVerilog** (2020, DVCon Europe) — Rich Edelman. The canonical survey of transaction recording across SV, Verilog, and VHDL, including the built-in UVM mechanism and the publisher/subscriber pattern.
+- **Avoiding Configuration Madness The Easy Way Rich Edelman** (2023, DVCon US) — Rich Edelman. Calls out `recording_detail` type-mismatch issues and proposes a simpler, transparent config system.
+- **Time-Travel Debugging for High-Level Synthesis Code** (2025, DVCon US) — Jonathan Bonsor-Matthews and Greg Law. Bidirectional time-travel debugging for HLS, with waveform extraction from the recording.
+- **Time-Travel Debugging for HLS Code** (2025, DVCon Europe) — Jonathan Bonsor-Matthews, Greg Law and Chirag Goyal. European variant of the time-travel debugging work with the same waveform-extraction capability.
+
+---
+
+*Part of the [DVCon LLM Wiki](index.md). 50+1 concepts synthesized from 1,852 DVCon papers (2010-2026).*

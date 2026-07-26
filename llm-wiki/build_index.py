@@ -67,7 +67,7 @@ lines.append("---")
 lines.append("")
 lines.append("## How this wiki was built")
 lines.append("")
-lines.append("1. **Source extraction** (`build_sources.py`): for each of the 50 topics, "
+lines.append("1. **Source extraction** (`build_sources.py`): for each topic, "
              "the script queries `data/dvcon.db` and picks the 8–15 most relevant "
              "DVCon papers + 5–10 most relevant chunks + 8 most-cited references. "
              "Result: one JSON file per topic under `_sources/`.")
@@ -93,16 +93,18 @@ lines.append("- **Citation format.** Inline citations look like `[Paper Title, 2
 lines.append("- **Voice.** The hook is first-person and motivational (Karpathy-style). "
              "The body is neutral and reference-like. The two voices are deliberately "
              "different — the hook pulls you in, the body teaches you.")
-lines.append("- **Coverage.** The 50 topics span the full DVCon domain: foundations "
-             "(SystemVerilog, UVM, UPF, SystemC), UVM deep dives, formal verification, "
-             "coverage, AI/ML for verification, domain-specific topics (CDC, RDC, "
-             "low-power, AMS, RISC-V, security), and emerging themes (PSS, chiplets, "
-             "LLMs for verification, the future of the field).")
+lines.append("- **Coverage.** The 100 topics span the full DVCon domain: foundations "
+             "(SystemVerilog, UVM, UPF, SystemC), UVM deep dives and mechanics, formal "
+             "verification, coverage, AI/ML for verification, methodology and flow, "
+             "standards and protocols (AXI, PCIe, USB, Ethernet, DDR, NoC, cache "
+             "coherency, register blocks), power/clock/analog, functional safety "
+             "(ISO 26262, DO-254), tools and ecosystem (cocotb, OSVVM, SystemC TLM-2.0, "
+             "cloud), and SoC/system depth (SW-driven, post-silicon, chip-to-board).")
 lines.append("- **Gaps.** Some topics have thinner source material than others "
              "(e.g. UVM callbacks had only 6 papers in the corpus). Those pages are "
              "necessarily shorter and rely more heavily on the smaller set of sources.")
 lines.append("")
-lines.append(f"*Last regenerated: 50 pages, ~{total_words:,} words, "
+lines.append(f"*Last regenerated: {written} pages, ~{total_words:,} words, "
              f"{total_citations} citations. Run `docs/.venv/Scripts/python.exe "
              f"llm-wiki/build_index.py` to refresh this index.*")
 
