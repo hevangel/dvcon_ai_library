@@ -2,7 +2,7 @@
 
 > *A synthesized wiki of EDA / functional-verification knowledge, built from the 1,852-paper DVCon corpus (2010–2026). Every page opens with a Karpathy-style hook, drops into neutral reference prose, and cites 8–15 real DVCon papers so every claim is traceable to the source.*
 
-**100 of 100 pages written** · ~156,791 words total · 1284 paper citations across the wiki.
+**100 of 100 pages written** · ~157,105 words total · 1284 paper citations across the wiki.
 
 ---
 
@@ -170,4 +170,4 @@ See [`README.md`](README.md) for regeneration instructions.
 - **Coverage.** The 100 topics span the full DVCon domain: foundations (SystemVerilog, UVM, UPF, SystemC), UVM deep dives and mechanics, formal verification, coverage, AI/ML for verification, methodology and flow, standards and protocols (AXI, PCIe, USB, Ethernet, DDR, NoC, cache coherency, register blocks), power/clock/analog, functional safety (ISO 26262, DO-254), tools and ecosystem (cocotb, OSVVM, SystemC TLM-2.0, cloud), and SoC/system depth (SW-driven, post-silicon, chip-to-board).
 - **Gaps.** Some topics have thinner source material than others (e.g. UVM callbacks had only 6 papers in the corpus). Those pages are necessarily shorter and rely more heavily on the smaller set of sources.
 
-*Last regenerated: 100 pages, ~156,791 words, 1284 citations. Run `docs/.venv/Scripts/python.exe llm-wiki/build_index.py` to refresh this index.*
+*Last regenerated: 100 pages, ~157,105 words, 1284 citations. Run `docs/.venv/Scripts/python.exe llm-wiki/build_index.py` to refresh this index.*
