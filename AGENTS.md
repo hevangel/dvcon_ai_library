@@ -97,6 +97,7 @@ Build and maintain a web app that:
 - `docs/`: standalone analysis workspace that data-mines the corpus and emits the GitHub Pages site (`generate_report.py` + curated `data/topics.csv`, `data/companies.csv`, served as `index.html`); see `docs/README.md`
 - `llm-wiki/`: 100-page Karpathy-style knowledge wiki synthesized from the corpus (`build_sources.py` extracts per-topic source JSONs from the DB; an LLM agent writes each markdown page from its source; `build_index.py` generates the TOC); see `llm-wiki/README.md`
 - `.agents/skills/dvcon-papers/SKILL.md`: workspace agent skill describing the MCP tools
+- `plugins/dvcon-papers/skills/dvcon-submit/SKILL.md`: plugin skill that submits DVCon U.S. papers (extended abstract AND full paper) to Oxford Abstracts via `playwright-cli`, and converts a markdown paper to a template-styled `.docx`/`.pdf` via MS Word COM (bundles the DVCon IEEE `.doc` template + `convert_md_to_docx.ps1` / `.sh` helpers — the bash version delegates to the `.ps1` on Windows, else falls back to pandoc + LibreOffice)
 - `.claude-plugin/marketplace.json`: Anthropic Claude plugin marketplace catalog
 - `plugins/dvcon-papers/`: Claude plugin bundling the skill, `/dvcon` command, and `dvcon` MCP server
 
@@ -155,13 +156,30 @@ The same capabilities are also exposed as MCP tools (see "MCP Server" below): `s
 - The server calls `create_db_and_tables()` on startup so it can run standalone without the HTTP backend having started first.
 - Tool payloads are plain JSON-serializable dicts (no SQLModel objects leak across the wire).
 
-## Agent Skill
+## Agent Skills
 
-- The workspace skill lives at `.agents/skills/dvcon-papers/SKILL.md` (cross-tool default location per the skill-creator convention).
+Two workspace skills live under `.agents/skills/` (cross-tool default location per the skill-creator convention).
+
+### dvcon-papers (corpus reader)
+
+- Skill: `.agents/skills/dvcon-papers/SKILL.md`.
 - Frontmatter is intentionally minimal: only `name` and `description` (ZCode skill spec — no `model` or `allowed-tools` keys).
 - The description is trigger-forward so the model picks it up when users ask about DVCon papers, EDA/verification methodology, or paper search/summarization even without saying "DVCon" or "MCP".
 - A mirrored copy ships inside the Claude plugin at `plugins/dvcon-papers/skills/dvcon-papers/SKILL.md` so the plugin is self-contained.
 - Use `/skill dvcon-papers` in a ZCode-style client to force-load it; otherwise it auto-triggers based on the description.
+
+### dvcon-submit (paper conversion + submission)
+
+- Skill: `plugins/dvcon-papers/skills/dvcon-submit/SKILL.md` with references at `references/submission_reference.md` (form field truth) and `references/conversion_reference.md` (markdown→PDF truth), interchangeable helpers at `scripts/convert_md_to_docx.ps1` (PowerShell) and `scripts/convert_md_to_docx.sh` (bash twin; delegates to the `.ps1` on Windows), and the bundled DVCon IEEE template at `references/dvcon_abstract_template.doc` (+ a `.pdf` rendering for visual reference).
+- Two capabilities: (1) **convert** a markdown paper to a template-styled `.docx`/`.pdf` by filling the template's named IEEE styles via MS Word COM (this machine has Word 16.0; no LibreOffice/pandoc needed); (2) **submit** to Oxford Abstracts by driving a real browser with the `playwright-cli` command-line tool (verified v0.1.14 on PATH).
+- Covers **both** DVCon submission stages: the initial **Extended Abstracts** stage (double-blind, 600–1200 words) and the later **Full Paper** stage (6–8 pages, author info included, plus a signed copyright form upload).
+- Uses `playwright-cli` (NOT the ZCode in-app browser) precisely because `playwright-cli upload` can attach the PDF — the IAB runtime cannot do file uploads. The browser is launched `--headed --persistent` so the user can see it and log in; the skill never enters credentials.
+- The markdown converter maps markdown constructs to the template's IEEE named styles (`# H1`→IEEE Title, `>`blockquote→IEEE Abstract, `## H2`→IEEE Heading 1, `### H3`→IEEE Heading 2, lists→IEEE List, `[n]` lines→IEEE Reference, body→IEEE Text, fenced code→IEEE Text monospace). It **drops `## Authors`/`## Affiliations`/`## Author Information` sections** so the abstract stays double-blind; for the full-paper stage the user renames the section or post-edits the `.docx`.
+- The submission is **double-blind for the abstract stage**: the PDF must not contain author names or affiliations (they go in the form's Authors section, hidden from reviewers). The skill warns if the body prose self-identifies.
+- The Oxford Abstracts stage id changes every year (DVCon U.S. 2027 = stage `81951`); the skill never hardcodes it — it re-discovers the live "Submit Now" URL from `https://dvcon.org/submission-instructions/call-for-extended-abstracts`.
+- The reference files are the source of truth for exact field labels, the 14 topic dropdown labels (short forms like `Formal/Assertions`, not the long homepage names), and the two country-dropdown label variants (`USA`/`UAE` on the affiliation dropdown vs `United States`/`United Arab Emirates` on the presenter dropdown).
+- The final Submit click is never automated without explicit user confirmation (hard-to-reverse outward action). All other fields, the upload, and the click are driven by `playwright-cli`.
+- Does NOT cover tutorial/workshop or panel submissions — those are separate Oxford Abstracts stages with different forms.
 
 ## Anthropic Marketplace Plugin
 
@@ -234,6 +252,7 @@ Implemented:
 - chat continuation token reuse via `previous_response_id`
 - MCP server over stdio reusing the service layer (`dvcon-mcp`)
 - workspace agent skill (`.agents/skills/dvcon-papers`) describing the MCP tools
+- workspace agent skill (`.agents/skills/dvcon-submit`) that converts a markdown paper to a DVCon IEEE-template-styled `.docx`/`.pdf` via MS Word COM (`scripts/convert_md_to_docx.ps1` + the bash twin `convert_md_to_docx.sh`), and submits DVCon U.S. papers (extended abstract + full paper stages) to Oxford Abstracts via `playwright-cli` (real browser, supports PDF upload; bundled template + references for field labels, 14 topics, country-dropdown variants)
 - Anthropic Claude plugin marketplace + self-contained `dvcon-papers` plugin (skill + `/dvcon` command + MCP server)
 - Dockerfile
 - repo-managed `compose.yaml` full app + GROBID stack
@@ -262,6 +281,11 @@ Verified:
 
 ## Important Gotchas
 
+- The `dvcon-submit` skill drives Oxford Abstracts with the **`playwright-cli`** command-line tool (a real browser), NOT the ZCode in-app browser. This is deliberate: `playwright-cli upload` can attach the paper PDF, whereas the IAB runtime cannot do file uploads (`waitForEvent("filechooser")` / `setFiles` return `capability_unsupported`). Launch with `playwright-cli open --headed --persistent` so the user can see and log into the visible window; the skill never enters credentials.
+- The `dvcon-submit` skill's final Submit click is never automated without explicit user confirmation (submission is a hard-to-reverse outward action). Everything else — field fills, the PDF upload, dropdowns, checkboxes — is driven by `playwright-cli`.
+- The `dvcon-submit` skill must never hardcode the Oxford Abstracts stage id (it changes yearly: DVCon U.S. 2027 = `81951`). It re-discovers the live submitter URL from the dvcon.org "Submit Now" link each run.
+- The `dvcon-submit` markdown converter ships as twins: `scripts/convert_md_to_docx.ps1` (PowerShell) and `scripts/convert_md_to_docx.sh` (bash). The PowerShell version requires **MS Word** (drives Word via COM; verified Word 16.0 on this host) and no LibreOffice/pandoc is installed locally. The bash version on Windows auto-detects `pwsh`/`powershell.exe`, converts paths via `cygpath -w`, and delegates to the `.ps1` (so output is identical); on macOS/Linux it falls back to a `pandoc` + `libreoffice` path. Both fill the bundled template's named IEEE styles, drop `## Authors` sections for double-blind compliance, and export the PDF with embedded fonts via `ExportAsFixedFormat` (Windows) or `soffice --convert-to pdf` (non-Windows).
+- DVCon extended-abstract submissions are **double-blind**: author names and affiliations must not appear inside the abstract PDF (they go in the form's Authors section, which is hidden from reviewers). The converter drops `## Authors`/`## Affiliations`/`## Author Information` sections, but the skill also warns if the body prose self-identifies. The **full-paper** stage is NOT blind — author info belongs in the PDF.
 - `data/` is intentionally gitignored and may be empty in git status even after ingestion.
 - `frontend/.env.local` is gitignored and contains the local backend URL override.
 - New extractions place images under the markdown tree at `data/markdown/{year}/{location}/images/{slug}/`.

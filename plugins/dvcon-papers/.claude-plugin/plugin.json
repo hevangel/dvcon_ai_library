@@ -8,7 +8,7 @@
     "url": "https://github.com/hevangel/dvcon_ai_library"
   },
   "homepage": "https://github.com/hevangel/dvcon_ai_library",
-  "skills": ["skills/dvcon-papers"],
+  "skills": ["skills/dvcon-papers", "skills/dvcon-submit"],
   "commands": ["commands/dvcon.md"],
   "mcpServers": {
     "dvcon": {

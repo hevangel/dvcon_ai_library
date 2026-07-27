@@ -1,0 +1,323 @@
+---
+name: dvcon-submit
+description: Submit papers to the DVCon (Design & Verification Conference) U.S. call for papers via the Oxford Abstracts portal — both the extended-abstract stage and the later full-paper stage — by driving a real browser with the playwright-cli command-line tool. Also converts a DVCon paper written in Markdown into a properly-styled, DVCon/IEEE-template-compliant .docx and .pdf using MS Word. Use whenever the user wants to submit an extended abstract or full paper to DVCon, fill out the DVCon submission form, upload a paper to Oxford Abstracts, enter authors/affiliations/topics into the DVCon submission system, or convert a markdown paper to the DVCon Word template / PDF — even if they don't explicitly say "Oxford Abstracts", "playwright-cli", or "Word template".
+---
+
+# DVCon Submit
+
+This skill does two things for DVCon U.S. paper submissions:
+
+1. **Convert** a paper written in Markdown into a `.docx` (and optionally `.pdf`)
+   that matches the IEEE-style DVCon abstract template, via MS Word COM. The
+   output uses the template's named IEEE styles so it inherits the right fonts,
+   sizes, margins, and US Letter paper size automatically.
+2. **Submit** the resulting PDF (or the user's existing PDF) to the DVCon U.S.
+   call for papers on **Oxford Abstracts**, by driving a real browser with the
+   **`playwright-cli`** command-line tool — including the file upload, which the
+   ZCode in-app browser cannot do but `playwright-cli upload` can.
+
+It handles both stages of the DVCon lifecycle:
+
+- **Extended Abstracts** (the initial submission, double-blind, 600–1200 words)
+- **Full Paper** (the later stage, after preliminary acceptance, 6–8 pages,
+  author info included)
+
+## When to use
+
+Trigger this skill when the user wants to:
+
+- submit an extended abstract **or** a full paper to DVCon (U.S.)
+- fill out the DVCon submission form on Oxford Abstracts
+- upload a paper PDF to the DVCon / Oxford Abstracts submission system
+- enter authors, affiliations, or topics into the DVCon submission form
+- convert a markdown paper to the DVCon Word template / PDF
+- prepare a DVCon abstract or full paper for submission
+
+Do **not** trigger this for tutorials/workshops or panel submissions — those are
+separate Oxford Abstracts stages with different forms.
+
+## Two tools, two stages
+
+| Task | Stage | Tool |
+|------|-------|------|
+| Convert markdown → `.docx` + `.pdf` (template-styled) | either | `scripts/convert_md_to_docx.ps1` (PowerShell, MS Word COM) or `scripts/convert_md_to_docx.sh` (bash twin; delegates to the `.ps1` on Windows, else pandoc + LibreOffice) |
+| Drive the submission form (fill fields, upload PDF, click Submit) | either | `playwright-cli` (real browser) |
+
+The conversion is optional — if the user already has a compliant PDF, skip
+straight to submission. The submission is optional too — if the user only wants
+the PDF, stop after conversion.
+
+## Prerequisites
+
+### For conversion (markdown → PDF)
+
+- **MS Word must be installed** (the script drives Word via COM). Verified
+  available as Word 16.0 on this machine. No LibreOffice/pandoc needed.
+- The DVCon template is bundled at
+  `references/dvcon_abstract_template.doc` (Word `.doc`, OLE2). A read-only PDF
+  rendering of the same template is at `references/dvcon_abstract_template.pdf`
+  for visual reference. Re-download the latest from the dvcon.org instructions
+  page if the conference updates it.
+
+### For submission (driving Oxford Abstracts)
+
+- **`playwright-cli`** must be installed and on PATH
+  (`playwright-cli --version` should print a version; verified v0.1.14 here).
+  It provides `open --headed`, `goto`, `snapshot`, `fill`, `select`, `check`,
+  `click`, and crucially `upload` — so the abstract PDF upload is automatable,
+  unlike the ZCode in-app browser.
+- **The user must be signed in to Oxford Abstracts.** Launch
+  `playwright-cli open --headed --persistent` so the browser is visible and the
+  profile persists; if the sign-in page appears, ask the user to log in
+  (email/password, Google, or LinkedIn) in that visible window, then continue.
+  Never enter credentials yourself.
+- The user must have a finished, compliant paper PDF.
+
+## Collect the submission payload first
+
+Before touching the browser or the converter, confirm you have every required
+field. If anything is missing or ambiguous, ask — do not guess author names,
+emails, affiliations, or topics.
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `title` | yes | Full title, ≤ 50 characters. Used in the final program. |
+| `short_description` | yes | Plain text, ≤ 250 words. Used in the final program. |
+| `paper_pdf_path` | yes | Local PDF. Abstract stage: 600–1200 words, double-blind. Full-paper stage: 6–8 pages, with author info. |
+| `authors[]` | yes (≥1) | Each: `first_name`, `last_name`, `email`, `is_presenting` (exactly **one** presenter), and ≥1 `affiliation` (`institution`, `city`, `country`). Order = printed order. **Author info goes in the FORM, not the abstract PDF.** Required in the form for both stages; in the PDF only for the full-paper stage. |
+| `presenter_country` | yes | Country the presenter travels from (may differ from residency). |
+| `primary_topic` | yes | One of the 14 topics (see `references/submission_reference.md`). |
+| `secondary_topic` | optional | One of the same 14 topics. |
+| `consents` | yes (all 3) | Publish permission, all-authors-approved, will-attend-and-present. |
+
+### Stage-specific PDF rules
+
+**Extended Abstract stage** (double-blind):
+
+- 600–1200 words (~2 pages, excluding diagrams/figures/tables). NOT the full paper.
+- **US Letter (8.5″ × 11″)**, embed all fonts, avoid Type 3 fonts.
+- **No page numbers.** No security/encryption settings on the PDF.
+- **Adobe PDF (.pdf)** preferred; max **5.0 MB**.
+- **No author names or affiliations anywhere in the PDF.**
+
+**Full Paper stage** (after preliminary acceptance):
+
+- 6–8 pages.
+- Same US Letter / font-embedding / no-security rules.
+- **Author names and affiliations ARE included** in the full paper.
+- A signed **copyright form** (PDF) must also be uploaded by the final deadline,
+  filled with Title + all author names + paper ID.
+
+## Workflow A — Convert markdown to the DVCon template PDF
+
+Read `references/conversion_reference.md` for the full markdown-to-style mapping,
+the list of IEEE named styles the template defines, and troubleshooting. The
+reference is the source of truth for the conversion.
+
+Two interchangeable helper scripts are provided — pick the one matching your
+shell. Both take the same arguments (the bash version uses `--flag` style):
+
+**PowerShell** (Windows native; drives MS Word via COM):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "<skill_dir>/scripts/convert_md_to_docx.ps1" `
+  -Markdown C:\papers\mine.md `
+  -Docx     C:\papers\mine.docx `
+  -Pdf      C:\papers\mine.pdf
+```
+
+**Bash** (Git Bash / macOS / Linux). On Windows it auto-detects PowerShell and
+delegates to the `.ps1` so the output is identical; on other platforms it falls
+back to a pandoc + LibreOffice path:
+
+```bash
+"<skill_dir>/scripts/convert_md_to_docx.sh" \
+  --markdown /path/to/paper.md \
+  --docx     /path/to/paper.docx \
+  --pdf      /path/to/paper.pdf
+```
+
+Drop the `-Pdf` / `--pdf` argument to produce only the `.docx`. The script:
+
+- opens the bundled template (carrying the IEEE styles + US Letter page setup),
+- clears the body,
+- re-emits the markdown using the template's named styles
+  (`# H1`→IEEE Title, `>`blockquote→IEEE Abstract, `## H2`→IEEE Heading 1,
+  `### H3`→IEEE Heading 2, lists→IEEE List, `[n]` lines→IEEE Reference,
+  body→IEEE Text, fenced code→IEEE Text monospace),
+- **drops any `## Authors` / `## Affiliations` / `## Author Information`
+  section** so the abstract PDF stays double-blind compliant,
+- saves the `.docx` and exports the `.pdf` with embedded fonts.
+
+After conversion, **verify the output** before submitting:
+
+1. Word-count the body (Title + Abstract + sections, excluding the reference
+   list and figures): must be 600–1200 for the abstract stage.
+2. Confirm the PDF opens, is US Letter, and contains no author names (the
+   converter drops the Authors section, but the user's prose may still mention
+   affiliations — grep the markdown for "we", company names, etc., and warn).
+3. Confirm file size ≤ 5 MB.
+
+### Full-paper conversion caveat
+
+The converter drops `## Authors` / `## Affiliations` / `## Author Information`
+sections by default (correct for the double-blind abstract). For the **full
+paper**, author info must be retained. Two options:
+
+- Rename the author heading to something NOT in the drop list before converting
+  (e.g. `## Authors and Affiliations`), then convert.
+- Or convert without the author section, then open the `.docx` in Word and add
+  the author block manually before exporting the PDF.
+
+## Workflow B — Submit to Oxford Abstracts via playwright-cli
+
+Read `references/submission_reference.md` for exact field labels, the 14 topic
+dropdown options, the two country-dropdown label variants, and the rich-text
+editor gotchas. The reference is the source of truth for the form.
+
+### B.1 Open a persistent, visible browser
+
+```bash
+playwright-cli open --headed --persistent
+```
+
+`--headed` lets the user see (and log into) the window. `--persistent` keeps the
+profile so login survives across runs. If the user already has a session open,
+`playwright-cli list` shows it; otherwise `open` creates one.
+
+### B.2 Discover the submitter URL and navigate
+
+Discover the current portal URL rather than guessing the stage id — it changes
+every year (DVCon U.S. 2027 = stage `81951`):
+
+```bash
+playwright-cli goto "https://dvcon.org/submission-instructions/call-for-extended-abstracts"
+playwright-cli snapshot
+```
+
+From the snapshot, find the **Submit Now** link
+(`https://app.oxfordabstracts.com/stages/<ID>/submitter`) and `goto` it. If the
+sign-in page appears, ask the user to log in in the visible window, then
+`snapshot` again. After login the portal lands on the new-submission form.
+
+### B.3 Take a snapshot to get element refs
+
+```bash
+playwright-cli snapshot
+```
+
+`playwright-cli` commands take a **target** argument that is either an exact
+element **ref** from the most recent snapshot, or a unique CSS selector. Always
+`snapshot` before acting, and re-snapshot after any action that re-renders the
+page (e.g., clicking "+ Add Another Author"). Stale refs cause failures.
+
+### B.4 Fill the fields
+
+Use the refs from the snapshot. Field order and the exact labels are in
+`references/submission_reference.md`; the short summary:
+
+```bash
+# Rich-text editors (Title, Short Description): fill the contenteditable region
+playwright-cli fill "<title_ref>"           "My DVCon Paper Title"
+playwright-cli fill "<short_desc_ref>"      "A short description of my paper..."
+
+# Repeatable Authors block: fill First/Last/Email, check Presenting for ONE author,
+# fill Affiliation (Institution/City), select Country from the dropdown
+playwright-cli fill  "<first_name_ref>"     "Jane"
+playwright-cli fill  "<last_name_ref>"      "Doe"
+playwright-cli fill  "<email_ref>"          "jane@example.com"
+playwright-cli check "<presenting_ref>"
+playwright-cli fill  "<institution_ref>"    "Example Corp"
+playwright-cli fill  "<city_ref>"           "San Jose"
+playwright-cli select "<affiliation_country_ref>" "USA"      # NOTE: "USA" here
+playwright-cli click  "<add_another_author_ref>"
+playwright-cli snapshot    # re-snapshot: the new block has fresh refs
+
+# Three consent checkboxes
+playwright-cli check "<publish_perm_ref>"
+playwright-cli check "<all_authors_approved_ref>"
+playwright-cli check "<will_attend_ref>"
+
+# Presenter travel-from country — NOTE: "United States" here, NOT "USA"
+playwright-cli select "<presenter_country_ref>" "United States"
+
+# Topics (short labels: Formal/Assertions, Coverage, CDC/RDC, ...)
+playwright-cli select "<primary_topic_ref>"   "Formal/Assertions"
+playwright-cli select "<secondary_topic_ref>" "Coverage"
+```
+
+The two country dropdowns use **different option labels** — see the reference.
+
+### B.5 Upload the PDF (playwright-cli CAN do this)
+
+```bash
+playwright-cli upload "C:\papers\mine.pdf"
+```
+
+`upload` takes one or more absolute file paths and feeds them to the page's file
+chooser. Click the **Choose File** button first (or let `upload` trigger it),
+then `upload` the absolute PDF path. Re-snapshot to confirm the file name now
+appears next to the button.
+
+### B.6 Final review and submit
+
+Read back every field value to the user for sign-off (title, short description,
+all authors + affiliations, topics, country, the three consents, and
+confirmation that the PDF is attached). Then ask explicitly whether to click
+**Submit**.
+
+Only after the user confirms, click Submit:
+
+```bash
+playwright-cli click "<submit_ref>"
+```
+
+If the form surfaces validation errors, re-snapshot, report the exact errors,
+fix them, and re-review. Never click Submit without explicit user confirmation —
+submission is a hard-to-reverse outward action.
+
+### B.7 Full-paper stage differences
+
+When the user returns to submit the **full paper** after preliminary acceptance:
+
+- The Oxford Abstracts stage is different (a new stage id); navigate from the
+  user's submission dashboard rather than the abstract "Submit Now" link.
+- The full paper **includes** author info — do NOT apply the double-blind drop.
+  See "Full-paper conversion caveat" under Workflow A.
+- A signed copyright form PDF must also be uploaded before the final deadline.
+- The page limit is 6–8 pages, not 600–1200 words.
+
+## Safety rules
+
+- **Never click Submit without explicit user confirmation.**
+- **Never enter the user's credentials.** Hand login to the user via the headed
+  window.
+- **Never invent author names, emails, affiliations, or topics.** If the payload
+  is incomplete, ask.
+- **Abstract stage is double-blind.** The markdown converter drops `## Authors`
+  sections automatically; also warn if the body prose mentions specific
+  companies or uses "we [at Company]" phrasing that could de-anonymize.
+- **Full-paper stage is NOT blind** — author info belongs in the PDF.
+- The three consent checkboxes are legal attestations (all authors approved;
+  someone will attend and present). Do not check them unless the user has
+  actually confirmed those facts.
+- Each `goto` URL must come from the dvcon.org page, the Oxford Abstracts UI, or
+  the user's submission dashboard — never a guess. Stage ids change yearly.
+- `playwright-cli` drives a real browser that the user can see; describe actions
+  in plain terms ("opening the form", "filling the title"), not internal CLI
+  jargon.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `convert_md_to_docx.ps1` / `.sh`: "Word COM" error / "read-only" | Ensure MS Word is installed and not held open elsewhere; both scripts remove pre-existing output files before writing |
+| `convert_md_to_docx.sh` on macOS/Linux: "pandoc not found" / "soffice not found" | The bash wrapper's non-Windows branch needs `pandoc` and `libreoffice` (`soffice`) installed; on Windows it auto-delegates to the `.ps1` instead |
+| Conversion emits every line as its own paragraph | Fixed in current script — soft-wrapped body lines are joined; re-run if you edited the script |
+| Authors leaked into the abstract PDF | The converter drops `## Authors`/`## Affiliations`/`## Author Information`; check the body prose for self-identifying language |
+| `playwright-cli` not found | Install/repair the global CLI; confirm with `playwright-cli --version` |
+| Portal shows the sign-in page | `open --headed --persistent` and ask the user to log in; the profile persists for next time |
+| A `fill`/`select` target is ambiguous | Re-`snapshot`; `playwright-cli` needs an exact ref or unique selector — tighten scope rather than guessing |
+| `select "USA"` fails on the presenter country | The presenter dropdown uses `United States`; only the affiliation dropdown uses `USA`. See the reference. |
+| `upload` does not attach | Pass the **absolute** path; click Choose File first if the page needs the chooser primed |
+| Validation error on Submit | Re-snapshot, report the exact message, fix, re-review with the user |
