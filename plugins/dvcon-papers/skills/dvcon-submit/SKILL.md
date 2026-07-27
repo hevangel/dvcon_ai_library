@@ -251,13 +251,20 @@ The two country dropdowns use **different option labels** — see the reference.
 ### B.5 Upload the PDF (playwright-cli CAN do this)
 
 ```bash
+playwright-cli click  "label.fu-hover"        # NOT the "Choose File" snapshot ref
 playwright-cli upload "C:\papers\mine.pdf"
 ```
 
-`upload` takes one or more absolute file paths and feeds them to the page's file
-chooser. Click the **Choose File** button first (or let `upload` trigger it),
-then `upload` the absolute PDF path. Re-snapshot to confirm the file name now
-appears next to the button.
+`upload` feeds absolute file paths to the page's file chooser, but it only works
+while a file-chooser **modal state** is open. Do not click the snapshot ref
+labelled `button "file_upload Choose File (...)"` — that ref resolves to the
+hidden `<input type="file" class="sr-only">`, and the visible
+`<label class="... fu-hover">` on top of it intercepts pointer events, so the
+click times out and `upload` then fails with `can only be used when there is
+related modal state present`. Click the **label** instead; a good click reports
+`### Modal state - [File chooser]: can be handled by upload`. After uploading,
+re-snapshot and confirm the widget now shows `Replace file ...`, a `Remove`
+button, and a `Download uploaded file` link.
 
 ### B.6 Final review and submit
 
@@ -319,5 +326,6 @@ When the user returns to submit the **full paper** after preliminary acceptance:
 | Portal shows the sign-in page | `open --headed --persistent` and ask the user to log in; the profile persists for next time |
 | A `fill`/`select` target is ambiguous | Re-`snapshot`; `playwright-cli` needs an exact ref or unique selector — tighten scope rather than guessing |
 | `select "USA"` fails on the presenter country | The presenter dropdown uses `United States`; only the affiliation dropdown uses `USA`. See the reference. |
-| `upload` does not attach | Pass the **absolute** path; click Choose File first if the page needs the chooser primed |
+| `upload` says "can only be used when there is related modal state present" | The Choose File click did not open the chooser. Click `label.fu-hover`, not the `Choose File` snapshot ref (that ref is the hidden `input.sr-only`, and the label intercepts pointer events). Then `upload` the **absolute** path. |
+| Title truncated unnecessarily | The `0/50` counter on Title counts **words**, not characters. A 47-character title reads `9/50`. |
 | Validation error on Submit | Re-snapshot, report the exact message, fix, re-review with the user |
