@@ -1,36 +1,40 @@
-# Mining 17 Years of DVCon Papers with RAG Agents
+# An AI Interface to 17 Years of DVCon
 
 > The DVCon proceedings are one of the richest public records of industrial
-> verification practice, yet they are effectively unsearchable. Papers are
-> published as standalone PDFs behind a per-conference document library with no
-> full-text index, no semantic search, and no machine-readable metadata. This
-> extended abstract describes an open-source platform that crawls the complete
-> proceedings archive, extracts structured metadata and markdown from every PDF,
-> and exposes the result through hybrid keyword-plus-semantic search,
-> source-grounded chat, and a Model Context Protocol (MCP) server that lets AI coding
-> agents query the corpus from inside the engineer's existing tooling. We report
-> a full-corpus build of 1,852 papers spanning 2010-2026 across 42 conference
-> collections, yielding 38,761 indexed chunks, 3,342 authors, and 12,135 parsed
-> reference entries. We then show three things the indexed corpus makes
-> possible: a reproducible data-mining report on 17 years of verification
-> industry trends, a 100-page synthesized knowledge wiki in which every claim is
-> grounded in cited papers, and an agent skill that answers methodology
-> questions with citations instead of hallucinations.
+> verification practice, but today they behave more like a PDF archive than a
+> living knowledge system. This extended abstract presents the DVCon AI Library,
+> an open-source project designed equally for human use and AI-agent use. It
+> crawls the proceedings, converts papers into structured and searchable data,
+> and exposes one shared corpus through human-facing web interfaces and
+> machine-facing tools: a web application, grounded chat, a Model Context
+> Protocol (MCP)
+> server, and agent skills. The result supports more than
+> retrieval-augmented generation: an engineer can discover and compare prior
+> work from an editor, agents can mine the archive and synthesize cited
+> reference material, and an author can use a guarded workflow to format and
+> submit a new contribution to DVCon. We report a full-corpus build of 1,852
+> papers spanning 2010-2026 across 42 conference collections, yielding 38,761
+> indexed chunks, 3,342 authors, and 12,135 parsed references. From that
+> foundation we generate a reproducible industry-trends report and a 100-page
+> knowledge wiki grounded in the original papers. Together these capabilities
+> turn DVCon from a site that AI can merely search into a conference knowledge
+> loop that AI can help read, analyze, teach, and contribute back to.
 
 ## Motivation
 
-Every verification engineer has had the experience of solving a problem that
-someone already presented at DVCon five years earlier. The knowledge exists, but
-retrieval does not. Searching the conference site returns title-level keyword
-matches at best; a query like "how do teams reuse a module-level testbench at
-the SoC level" matches nothing, because the answer lives in the body of a paper
-whose title never uses those words. Meanwhile general-purpose language models
-answer verification questions fluently and frequently wrongly, because they were
-never grounded in this literature and cannot cite it.
+Every verification engineer has rediscovered a solution that someone presented
+at DVCon years earlier. The knowledge exists, but normal web search sees mostly
+titles and isolated PDFs. A question such as "how do teams reuse a module-level
+testbench at the SoC level?" may not match a title even when a paper answers it
+in detail. General-purpose language models can respond fluently, but without
+access to this literature they cannot reliably distinguish established
+practice from plausible invention.
 
-The gap is not a modeling problem. It is a corpus problem: the proceedings have
-never been assembled into a machine-readable form. This work closes that gap and
-treats the resulting corpus as infrastructure.
+The deeper problem is not simply that DVCon lacks a chatbot. The proceedings
+have not been assembled as infrastructure that software and agents can inspect,
+cite, transform, and use within an engineering workflow. This project asks what
+becomes possible when the conference archive is treated as an interface rather
+than a collection of downloads.
 
 ## Corpus Construction
 
@@ -51,41 +55,35 @@ individual reference entries. When that service is unavailable the pipeline
 falls back to heuristic extraction rather than failing, so a partial outage
 degrades metadata quality instead of aborting an ingest of thousands of papers.
 
-The pipeline is idempotent, resumable, and isolates failures per paper: a
-corrupt PDF, a parser hiccup, or an out-of-memory embedding call is logged and
-skipped rather than abandoning the batch. Downloads are validated by magic
-bytes, content length, and a page-count check, so error pages and truncated
-transfers are rejected instead of being persisted as unreadable PDFs.
+The pipeline is idempotent and resumable. It isolates failures per paper and
+validates downloads, allowing a full-archive ingest to continue through corrupt
+files, parser outages, and interrupted runs.
 
-## Retrieval and Grounded Chat
+## One Corpus for Humans and AI Agents
 
 Two indexes are maintained over the same content. Keyword search uses SQLite
-FTS5 over flattened per-paper text; semantic search uses a vector database
-populated by a local multilingual embedding model producing 1,024-dimensional
-vectors on a consumer GPU. No text leaves the machine during indexing. A hybrid
-mode merges both result sets, which matters because the two fail differently:
-keyword search misses paraphrase, and dense retrieval misses exact signal names,
-standard numbers, and tool flags.
+FTS5; semantic search uses a vector database populated by a local multilingual
+embedding model producing 1,024-dimensional vectors on a consumer GPU. No paper
+text leaves the machine during indexing. Hybrid search combines both because
+they fail differently: semantic retrieval handles paraphrase, while keywords
+remain better for exact signal names, standards, and tool flags.
 
-Chat is retrieval-grounded and scope-aware. When the user selects specific
-papers, that scope stays authoritative even for generic prompts such as "compare
-these two," which naively implemented retrieval widens into unrelated results.
-If the selected papers fit inside the model's context window the full text is
-sent; otherwise the system falls back to curated sections. Every answer returns
-numbered citations that resolve to the underlying paper and page.
+The corpus is deliberately built for two audiences. For humans, the web
+interface supports search, PDF and markdown reading, metadata-graph exploration,
+and paper-scoped chat. Chat keeps a user's selected papers authoritative, even
+for a generic request such as "compare these two," and returns citations to the
+source papers. These views let an engineer inspect the evidence directly rather
+than treating an AI answer as the final interface.
 
-## Agents, Not Just a Web App
+For AI agents, the same service layer is exposed through an MCP server. A packaged
+DVCon Papers agent skill teaches an AI assistant when and how to invoke tools
+for search, paper text, metadata, citation graphs, corpus statistics, and
+grounded comparison. This changes the interaction model: instead of visiting a
+separate RAG site, an engineer can ask about prior DVCon work while writing a
+test plan, reviewing code, or investigating a regression in the editor where
+the work is already happening.
 
-The same service layer is exposed twice: as a REST API behind a browser UI with
-PDF, markdown, and metadata-graph views, and as an MCP server over stdio. The
-second surface is the interesting one. It lets an AI coding assistant already
-running in the engineer's editor search the proceedings, pull a paper's
-markdown, inspect its citation graph, and answer with references, without the
-engineer leaving their workflow or trusting an ungrounded model. A packaged
-agent skill ships the tool descriptions so the capability is discovered
-automatically rather than invoked by hand.
-
-## What the Corpus Reveals
+## From Archive to New Knowledge
 
 Treating the proceedings as data yields a picture of the field that no
 individual paper contains. A reproducible analysis report answers questions such
@@ -96,23 +94,43 @@ One finding is uncomfortable and worth stating plainly: only about ten percent
 of papers link to a public repository, so most published methodology is not
 directly reproducible by a reader.
 
-A second artifact is a 100-page knowledge wiki synthesized from the corpus,
-covering foundations, testbench methodology, formal verification, coverage,
-safety and security, protocols, and emerging AI-assisted flows. Each page is
-written from a retrieved evidence bundle and closes with a bibliography of the
-real papers behind it, which makes the generated text auditable rather than
-merely plausible.
+A second artifact is a 100-page knowledge wiki synthesized by LLM agents from
+topic-specific evidence bundles. It covers foundations, UVM, formal
+verification, coverage, safety and security, protocols, SoC verification, and
+emerging AI-assisted flows. Each page cites the papers used to create it and
+closes with a source bibliography. The pipeline separates retrieval from
+writing, making each generated page auditable and regenerable rather than
+merely plausible. This demonstrates a different way to interact with DVCon:
+agents can reorganize many years of papers into a navigable technical textbook
+without severing the connection to the original authors.
 
-## Status and Availability
+## Closing the Conference Knowledge Loop
 
-The full pipeline has been run end to end on the complete archive. Index
-consistency between the relational store and the vector store is verified after
-every ingest, and the platform ships with automated backend and frontend test
-suites plus a container stack for reproduction. The corpus builder, search
-backend, web UI, agent server, analysis report, and wiki generator will be
-released under an open-source license so that other teams can rebuild the index
-locally and extend the analysis. Raw proceedings PDFs are not redistributed;
-the tooling re-downloads them from the official site.
+Interaction should not stop at consuming past papers. The repository also
+contains a DVCon Submit agent skill for the path back into the conference. It
+converts a paper written in Markdown into the official IEEE-styled Word and PDF
+formats, checks extended-abstract constraints such as word count and
+double-blind author removal, discovers the current Oxford Abstracts submission
+stage, and can populate the live form and upload the PDF through a visible
+browser. Credentials remain with the author, required metadata is never
+invented, and the final Submit action requires explicit human confirmation.
+
+This abstract itself was prepared with that workflow. The example illustrates
+an important boundary for AI-assisted engineering: automate repetitive,
+verifiable mechanics while preserving human control over identity, attestations,
+technical claims, and publication. Combined with corpus access, the two skills
+form a practical loop—read DVCon from an engineering agent, develop and validate
+a new contribution, then prepare it for DVCon through the same agent
+environment.
+
+## Open-Source Availability
+
+The full pipeline has been run end to end on the complete archive. The DVCon AI
+Library is an open-source project: its corpus builder, human and agent
+interfaces, agent skills, analysis report, wiki generator, tests, and
+reproducible container stack are publicly available in the GitHub repository
+[6]. Raw proceedings PDFs are not redistributed; the tooling retrieves them
+from the official site.
 
 ## References
 
@@ -125,3 +143,5 @@ the tooling re-downloads them from the official site.
 [4] Anthropic, "Model Context Protocol Specification," 2024.
 
 [5] SQLite Consortium, "SQLite FTS5 Full-Text Search Extension," SQLite Documentation.
+
+[6] "DVCon AI Library," GitHub repository. [Online]. Available: https://github.com/hevangel/dvcon_ai_library

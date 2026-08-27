@@ -100,7 +100,7 @@ Build and maintain a web app that:
 - `plugins/dvcon-papers/skills/dvcon-submit/SKILL.md`: plugin skill that submits DVCon U.S. papers (extended abstract AND full paper) to Oxford Abstracts via `playwright-cli`, and converts a markdown paper to a template-styled `.docx`/`.pdf` via MS Word COM (bundles the DVCon IEEE `.doc` template + `convert_md_to_docx.ps1` / `.sh` helpers — the bash version delegates to the `.ps1` on Windows, else falls back to pandoc + LibreOffice)
 - `.claude-plugin/marketplace.json`: Anthropic Claude plugin marketplace catalog
 - `plugins/dvcon-papers/`: Claude plugin bundling the skill, `/dvcon` command, and `dvcon` MCP server
-- `submissions/{conference}/`: papers this repo submits to DVCon. `abstract.md` is the hand-edited source; `abstract.pdf` is the exact artifact uploaded to Oxford Abstracts. The intermediate `abstract.docx` is gitignored (regenerate with the `dvcon-submit` converter)
+- `submissions/{conference}/`: papers this repo submits to DVCon. `abstract.md` is the hand-edited source; `abstract.pdf` is the exact artifact uploaded to Oxford Abstracts. The intermediate `abstract.docx` is gitignored (regenerate with the `dvcon-submit` converter). The DVCon U.S. 2027 abstract presents the library as an open-source project deliberately designed for both humans and AI agents across the broader conference lifecycle—reading, analyzing, synthesizing, and preparing contributions—not only RAG chat. Its current reference [6] uses the public `hevangel/dvcon_ai_library` URL at the author's explicit direction; that URL de-anonymizes the abstract and conflicts with the extended-abstract double-blind rule.
 
 ## Backend API Surface
 
