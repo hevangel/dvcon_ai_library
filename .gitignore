@@ -39,3 +39,11 @@ llm-wiki/_sources/
 *.tmp
 *.swp
 .DS_Store
+
+# playwright-cli scratch: page snapshots + console logs written next to the cwd
+# whenever the dvcon-submit skill drives a browser. Regenerated every run.
+.playwright-cli/
+
+# submissions/: keep the markdown source and the exact PDF that was submitted.
+# The .docx is a pure intermediate of the markdown -> Word template conversion.
+submissions/**/*.docx

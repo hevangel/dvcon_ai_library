@@ -43,7 +43,10 @@ upload is fully automatable. See `SKILL.md` Workflow B for the command flow.
 
 - Label text: `Title*`
 - Help text: `Enter the FULL TITLE of your submission. This will be used in the final program.`
-- Counter: `0/50` (max **50 characters**)
+- Counter: `0/50` (max **50 words**, NOT characters — verified live on the 2027
+  stage: the 47-character, 9-word title "Mining 17 Years of DVCon Papers with
+  RAG Agents" moved the counter to `9/50`). Do not needlessly truncate a title
+  to 50 characters.
 - Editor: contenteditable rich-text region with an italic / subscript /
   superscript / special-characters / clear-formatting toolbar. There is no
   Bold button in the Title editor (only Italic).
@@ -66,12 +69,26 @@ upload is fully automatable. See `SKILL.md` Workflow B for the command flow.
 - Help text: `Upload your extended abstract for review here. Please refrain from including any author's name or affiliations in this submission. The abstract should be 600-1200 words or two pages. Please do not submit your full paper.`
 - Button: `Choose File (.pdf, .doc, .docx, .txt only)`
 - Accepted: `.pdf`, `.doc`, `.docx`, `.txt` (PDF preferred per dvcon.org)
-- **Automatable with `playwright-cli upload`.** Click the **Choose File**
-  button (via `playwright-cli click`), then run
-  `playwright-cli upload "C:\path\to\abstract.pdf"` with the **absolute** path.
-  Re-`snapshot` to confirm the file name now appears next to the button.
-  (This is the key reason the skill uses `playwright-cli` instead of the ZCode
-  in-app browser, which cannot do file uploads.)
+- **Automatable with `playwright-cli upload`,** but the click target matters.
+  The snapshot ref labelled `button "file_upload Choose File (...)"` actually
+  resolves to the **hidden `<input type="file" class="sr-only">`**, and a
+  `<label class="mdc-button ... fu-hover">` sits on top of it and intercepts
+  pointer events. Clicking the ref therefore fails with
+  `<label ...> intercepts pointer events` → timeout, and a following `upload`
+  errors with `can only be used when there is related modal state present`.
+  **Click the label instead**, then upload the **absolute** path:
+
+  ```bash
+  playwright-cli click "label.fu-hover"      # opens the file chooser modal
+  playwright-cli upload "C:\path\to\abstract.pdf"
+  ```
+
+  A successful click reports `### Modal state - [File chooser]: can be handled
+  by upload`. After the upload the widget re-renders to `Replace file ...` plus
+  a `Remove` button, a `Download uploaded file` link, and a poster preview —
+  re-`snapshot` and check for those rather than for a filename.
+  (File upload is the key reason the skill uses `playwright-cli` instead of the
+  ZCode in-app browser, which cannot do file uploads.)
 
 ### 4. Authors, Affiliations*
 
