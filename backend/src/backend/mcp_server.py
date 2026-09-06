@@ -6,7 +6,8 @@ that MCP-compatible agent clients (Claude Code, ZCode, Cursor, etc.) can call
 them as tools.
 
 The server reuses the existing service layer in `backend.services.*`; it does
-not duplicate business logic. Run it with the `dvcon-mcp` console script:
+not duplicate business logic. It is a FastMCP 4 stdio server (`from fastmcp
+import FastMCP`). Run it with the `dvcon-mcp` console script:
 
     uv run --project backend dvcon-mcp
 
@@ -20,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from backend.db.session import create_db_and_tables
 from backend.services.chat import answer_question

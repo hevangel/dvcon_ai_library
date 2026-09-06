@@ -31,7 +31,7 @@ Build and maintain a web app that:
 - Chat: OpenAI Responses API via configurable `OPENAI_BASE_URL` and `OPENAI_API_KEY`
 - Embeddings: local `sentence-transformers` model via `torch`
 - Local embedding device: CUDA preferred, CPU fallback
-- Agent access: MCP server (`mcp` SDK, stdio transport) reusing the service layer; Claude plugin marketplace + agent skill mirror the same tool surface
+- Agent access: MCP server (standalone FastMCP 4 over stdio, built on MCP SDK v2) reusing the service layer; Claude plugin marketplace + agent skill mirror the same tool surface
 
 ## Key Product Requirements
 
@@ -150,7 +150,7 @@ The same capabilities are also exposed as MCP tools (see "MCP Server" below): `s
 ## MCP Server
 
 - The MCP server lives at `backend/src/backend/mcp_server.py` and is launched by the `dvcon-mcp` console script (`uv run --project backend dvcon-mcp`).
-- It uses the official `mcp` SDK's bundled FastMCP (`from mcp.server.fastmcp import FastMCP`) and runs over stdio transport (`mcp.run()`).
+- It uses standalone FastMCP (`from fastmcp import FastMCP`, package `fastmcp>=4`) and runs over stdio transport (`mcp.run()`). FastMCP 4 depends on MCP Python SDK v2; do not import `mcp.server.fastmcp` (that path existed only in SDK v1).
 - It is a thin wrapper over `backend.services.*` — no business logic is duplicated between the HTTP API and MCP.
 - Exposed tools: `search_papers`, `get_paper_detail`, `get_paper_markdown`, `get_paper_graph`, `corpus_stats`, `chat_with_papers`.
 - Read tools work without GROBID or OpenAI configured; only `chat_with_papers` needs `OPENAI_BASE_URL` / `OPENAI_API_KEY`.
@@ -200,6 +200,7 @@ Two workspace skills live under `.agents/skills/` (cross-tool default location p
 - Expected vector dimension after reindex: `1024`
 - `backend/src/backend/services/indexer.py` resets the Chroma collection if the embedding model changes, to avoid dimension mismatch with old vectors.
 - CUDA is available on this machine and should be preferred.
+- The CUDA torch wheel comes from the `pytorch-cu128` uv index with `explicit = true`, so only `torch` is resolved from that index. Leave it explicit: FastMCP 4 needs `idna>=3.18`, and the PyTorch wheel index still publishes `idna==3.4`, which would otherwise pin the resolver and fail the lock.
 
 ## Environment Files
 
