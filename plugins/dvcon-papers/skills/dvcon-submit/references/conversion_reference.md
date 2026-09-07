@@ -48,8 +48,17 @@ version uses `--flag` style) and produce the same output.
 `scripts/convert_md_to_docx.sh` — the bash twin. On Windows (Git Bash / MSYS /
 Cygwin) it auto-detects `pwsh`/`powershell.exe`, converts paths to Windows form
 with `cygpath -w`, and delegates to the `.ps1` so the output is byte-for-byte
-the same. On macOS / Linux it falls back to a `pandoc` + `libreoffice` path
-(`pandoc` builds the `.docx`, `soffice --convert-to pdf` exports the PDF).
+the same. On macOS / Linux it:
+
+1. Converts the bundled `.doc` template to `.docx` with LibreOffice (skipped
+   when `--template` already points at a `.docx`).
+2. Runs `scripts/fill_ieee_docx.py` (Python 3 stdlib) to parse the markdown
+   with the **same rules as the `.ps1`** — IEEE style mapping, Authors drop,
+   inline-run splitting — and rewrite `word/document.xml` inside that template.
+3. Optionally exports PDF with `soffice --convert-to pdf`.
+
+pandoc is not used. A plain pandoc `.docx` cannot target the template's IEEE
+style names; filling the converted template is the COM-equivalent strategy.
 
 ### Invocation
 
@@ -81,12 +90,12 @@ before writing, so re-runs are safe.
 - **PowerShell path** (`convert_md_to_docx.ps1`, or the `.sh` on Windows):
   - **MS Word installed** (drives Word via COM; verified Word 16.0 on this host).
   - PowerShell (Windows PowerShell 5+ or PowerShell 7).
-- **Bash path on macOS / Linux** (`convert_md_to_docx.sh`): `pandoc` and
-  `libreoffice` (`soffice`) on PATH. Note: `pandoc`'s `--reference-doc` needs a
-  `.docx` template; the bundled template is a legacy `.doc`, so on non-Windows
-  the bash wrapper builds a plain `.docx` without the IEEE styles unless you
-  pass a `.docx` template via `--template`. For full template styling, run on
-  Windows (either script — the `.sh` delegates to the `.ps1`).
+- **Bash path on macOS / Linux** (`convert_md_to_docx.sh`): Python 3 (stdlib)
+  and `libreoffice` (`soffice`) on PATH. The wrapper converts the bundled
+  `.doc` to `.docx` then `fill_ieee_docx.py` stamps IEEE styles + inline runs
+  into it. Pass a `.docx` `--template` to skip the `.doc` conversion step.
+  For Word-COM output, run on Windows (either script — the `.sh` delegates to
+  the `.ps1`).
 - The bundled template at `references/dvcon_abstract_template.doc` (shipped with
   the skill). Override with `-Template` / `--template` if you have a newer one.
 
@@ -133,6 +142,33 @@ The parser honors these rules:
 | Plain body paragraph | `IEEE Text` | Consecutive non-blank lines are **joined with a single space** (CommonMark soft-wrap). |
 | Blank line | paragraph break | Ends the current body/abstract paragraph. Does NOT exit the Authors drop. |
 
+### Inline formatting inside a paragraph
+
+Paragraph text is split into character runs before being typed, so inline
+markers become real Word character formatting instead of literal asterisks in
+the PDF. This applies to every style except fenced code blocks, which stay
+verbatim.
+
+| Inline construct | Rendered as |
+|------------------|-------------|
+| `**bold**`, `__bold__` | Bold run |
+| `*italic*`, `_italic_` | Italic run |
+| `***bold italic***`, `___bold italic___` | Bold + italic run |
+| `` `code` `` | Consolas run (backticks removed) |
+| `[label](https://url)` | `label (https://url)` — the URL is appended only when the label does not already contain it |
+| `\*`, `\_`, `` \` ``, `\[`, `\]`, `\\` | The escaped character, literally |
+
+Notes:
+
+- Markers are matched longest-first (`***` before `**` before `*`), and bold and
+  italic nest (`**bold with *inner italic* **`) up to four levels deep.
+- `_italic_` requires non-word characters on both sides, so identifiers and
+  DOIs (`2024.findings-acl_137`, `dvcon_ai_library`) are left alone. The `*`
+  form has no such restriction.
+- Runs are emitted with `Font.Reset()` between them and bold/italic are only
+  ever turned **on**, never forced off. That is deliberate: `IEEE Abstract` is
+  itself a bold style, and forcing `Bold = 0` would strip it.
+
 ### Example input → output
 
 Input (excerpt):
@@ -159,7 +195,8 @@ Output paragraphs (style | text):
 IEEE Title     | A Coverage-Driven UVM Methodology for RISC-V Vector Verification
 IEEE Abstract  | This extended abstract proposes a coverage-driven verification methodology targeting the RISC-V vector extension.
 IEEE Heading 1 | Introduction
-IEEE Text      | Modern RISC-V vector implementations present unique verification challenges due to the combinatorial space of `vsetvli` configurations.
+IEEE Text      | Modern RISC-V vector implementations present unique verification challenges due to the combinatorial space of vsetvli configurations.
+                 ("vsetvli" is typed in Consolas; the backticks are dropped)
 (Authors section dropped — Jane Doe does NOT appear in the output)
 ```
 
@@ -192,6 +229,9 @@ After running the script:
 | Every input line becomes its own paragraph | Older script bug; the current version joins soft-wrapped body lines. Re-pull the script if edited. |
 | ASCII diagram collapsed to one line | Fenced code blocks (```` ``` ````) are preserved verbatim — wrap your diagram in a code fence, not as plain text. |
 | Author names leaked into abstract PDF | The drop list is `Authors`/`Affiliations`/`Author Information` (exact match on the heading text). Rename the section OR scrub the body prose. |
-| Backticks render literally (`vsetvli`) | Intentional — the template has no inline-code style. For a cleaner look, the user can find/replace backticks in Word before export. |
+| `**bold**` / `*italic*` markers visible in the PDF | Older script bug — paragraph text was typed verbatim. The current version splits paragraphs into formatted runs; re-pull the script if it was edited. |
+| Backticks render literally (`` `vsetvli` ``) | Fixed — inline code now drops the backticks and switches the run to Consolas. |
+| An identifier with underscores turned italic | Only `_x_` with non-word characters on both sides italicizes. If a name still trips it, escape as `\_` or use backticks. |
 | PDF missing fonts | Word's `ExportAsFixedFormat` embeds used fonts by default; if a font is missing on the system it falls back. Ensure Times New Roman is installed (it ships with Windows/Word). |
+| `convert_md_to_docx.sh` on macOS/Linux: "python3 not found" / LibreOffice missing | The non-Windows branch needs Python 3 and `soffice`; it does not call pandoc. |
 | Want A4 instead of US Letter | Edit the template's page setup in Word once, save, and reuse. DVCon **requires US Letter** — do not change this for actual submissions. |

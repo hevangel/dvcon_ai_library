@@ -40,7 +40,7 @@ separate Oxford Abstracts stages with different forms.
 
 | Task | Stage | Tool |
 |------|-------|------|
-| Convert markdown → `.docx` + `.pdf` (template-styled) | either | `scripts/convert_md_to_docx.ps1` (PowerShell, MS Word COM) or `scripts/convert_md_to_docx.sh` (bash twin; delegates to the `.ps1` on Windows, else pandoc + LibreOffice) |
+| Convert markdown → `.docx` + `.pdf` (template-styled) | either | `scripts/convert_md_to_docx.ps1` (PowerShell, MS Word COM) or `scripts/convert_md_to_docx.sh` (bash twin; delegates to the `.ps1` on Windows, else `fill_ieee_docx.py` + LibreOffice) |
 | Drive the submission form (fill fields, upload PDF, click Submit) | either | `playwright-cli` (real browser) |
 
 The conversion is optional — if the user already has a compliant PDF, skip
@@ -127,8 +127,10 @@ powershell -ExecutionPolicy Bypass -File "<skill_dir>/scripts/convert_md_to_docx
 ```
 
 **Bash** (Git Bash / macOS / Linux). On Windows it auto-detects PowerShell and
-delegates to the `.ps1` so the output is identical; on other platforms it falls
-back to a pandoc + LibreOffice path:
+delegates to the `.ps1` so the output is identical; on other platforms it
+converts the bundled `.doc` to `.docx` with LibreOffice, then
+`fill_ieee_docx.py` fills the IEEE named styles (same mapping as the `.ps1`,
+including inline runs). pandoc is not used:
 
 ```bash
 "<skill_dir>/scripts/convert_md_to_docx.sh" \
@@ -145,6 +147,9 @@ Drop the `-Pdf` / `--pdf` argument to produce only the `.docx`. The script:
   (`# H1`→IEEE Title, `>`blockquote→IEEE Abstract, `## H2`→IEEE Heading 1,
   `### H3`→IEEE Heading 2, lists→IEEE List, `[n]` lines→IEEE Reference,
   body→IEEE Text, fenced code→IEEE Text monospace),
+- converts inline markers to real character formatting
+  (`**bold**`, `*italic*`, `` `code` ``→Consolas, `[label](url)`), so no
+  asterisks or backticks leak into the PDF,
 - **drops any `## Authors` / `## Affiliations` / `## Author Information`
   section** so the abstract PDF stays double-blind compliant,
 - saves the `.docx` and exports the `.pdf` with embedded fonts.
@@ -319,8 +324,10 @@ When the user returns to submit the **full paper** after preliminary acceptance:
 | Symptom | Fix |
 |---------|-----|
 | `convert_md_to_docx.ps1` / `.sh`: "Word COM" error / "read-only" | Ensure MS Word is installed and not held open elsewhere; both scripts remove pre-existing output files before writing |
-| `convert_md_to_docx.sh` on macOS/Linux: "pandoc not found" / "soffice not found" | The bash wrapper's non-Windows branch needs `pandoc` and `libreoffice` (`soffice`) installed; on Windows it auto-delegates to the `.ps1` instead |
+| `convert_md_to_docx.sh` on macOS/Linux: "python3 not found" / "LibreOffice not found" | The bash wrapper's non-Windows branch needs Python 3 (stdlib) and `libreoffice` (`soffice`); it does **not** use pandoc. On Windows it auto-delegates to the `.ps1` instead |
 | Conversion emits every line as its own paragraph | Fixed in current script — soft-wrapped body lines are joined; re-run if you edited the script |
+| `**bold**` / `*italic*` markers appear in the PDF | Fixed in current script — paragraphs are split into character runs; see `references/conversion_reference.md` |
+| Output `.docx` "not updated" | It is; `submissions/**/*.docx` is gitignored so it never shows in `git status`. Close any Word window holding a stale copy and check the file timestamp. |
 | Authors leaked into the abstract PDF | The converter drops `## Authors`/`## Affiliations`/`## Author Information`; check the body prose for self-identifying language |
 | `playwright-cli` not found | Install/repair the global CLI; confirm with `playwright-cli --version` |
 | Portal shows the sign-in page | `open --headed --persistent` and ask the user to log in; the profile persists for next time |

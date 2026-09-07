@@ -82,6 +82,122 @@ foreach ($out in @($Docx, $Pdf)) {
   }
 }
 
+# --- Inline markdown -> character-formatted runs ----------------------------
+# Paragraph text still carries inline markers (**bold**, *italic*, `code`,
+# [text](url)). Typing it verbatim would leave the markers visible in the PDF,
+# so each paragraph is split into runs that Word can format individually.
+# Backslash escapes (\* \_ \` \[ \] \\) are mapped to private-use characters
+# during matching and restored as literals afterwards.
+$script:inlineEscapes = [ordered]@{
+  '\\' = [char]0xE000
+  '\*' = [char]0xE001
+  '\_' = [char]0xE002
+  '\`' = [char]0xE003
+  '\[' = [char]0xE004
+  '\]' = [char]0xE005
+}
+
+# Alternation order matters: *** before ** before *, so the longest marker wins
+# (a lazy `\*\*.+?\*\*` would otherwise chew ***both*** and leave a stray *).
+# The _italic_ form requires non-word boundaries so identifiers and DOIs
+# (e.g. 2024.findings-acl_137) are not mangled.
+$script:inlinePattern = '(?<code>`[^`]+`)' +
+  '|(?<bolditalic>\*\*\*.+?\*\*\*)' +
+  '|(?<bolditalicu>___.+?___)' +
+  '|(?<bold>\*\*.+?\*\*)' +
+  '|(?<boldu>__.+?__)' +
+  '|(?<italic>\*[^*]+?\*)' +
+  '|(?<italicu>(?<!\w)_[^_]+?_(?!\w))' +
+  '|(?<link>\[(?<ltext>[^\]]*)\]\((?<lurl>[^)]*)\))'
+
+function New-Run([string]$Text, [bool]$Bold, [bool]$Italic, [bool]$Mono) {
+  [pscustomobject]@{ Text = $Text; Bold = $Bold; Italic = $Italic; Mono = $Mono }
+}
+
+function Get-InlineRuns {
+  param([string]$Text, [bool]$Bold = $false, [bool]$Italic = $false, [int]$Depth = 0)
+  $runs = New-Object System.Collections.Generic.List[object]
+  if ($Depth -gt 4) {
+    $runs.Add((New-Run $Text $Bold $Italic $false))
+    return , $runs
+  }
+  $pos = 0
+  foreach ($m in [regex]::Matches($Text, $script:inlinePattern)) {
+    if ($m.Index -lt $pos) { continue }
+    if ($m.Index -gt $pos) {
+      $runs.Add((New-Run $Text.Substring($pos, $m.Index - $pos) $Bold $Italic $false))
+    }
+    $v = $m.Value
+    if ($m.Groups['code'].Success) {
+      $runs.Add((New-Run $v.Substring(1, $v.Length - 2) $Bold $Italic $true))
+    }
+    elseif ($m.Groups['bolditalic'].Success -or $m.Groups['bolditalicu'].Success) {
+      foreach ($r in (Get-InlineRuns -Text $v.Substring(3, $v.Length - 6) -Bold $true -Italic $true -Depth ($Depth + 1))) {
+        $runs.Add($r)
+      }
+    }
+    elseif ($m.Groups['bold'].Success -or $m.Groups['boldu'].Success) {
+      foreach ($r in (Get-InlineRuns -Text $v.Substring(2, $v.Length - 4) -Bold $true -Italic $Italic -Depth ($Depth + 1))) {
+        $runs.Add($r)
+      }
+    }
+    elseif ($m.Groups['italic'].Success -or $m.Groups['italicu'].Success) {
+      foreach ($r in (Get-InlineRuns -Text $v.Substring(1, $v.Length - 2) -Bold $Bold -Italic $true -Depth ($Depth + 1))) {
+        $runs.Add($r)
+      }
+    }
+    elseif ($m.Groups['link'].Success) {
+      $ltext = $m.Groups['ltext'].Value
+      $lurl = $m.Groups['lurl'].Value
+      $shown = if ($ltext -ne '') { $ltext } else { $lurl }
+      # Keep the URL visible when the label does not already contain it —
+      # a printed paper has no clickable affordance.
+      if ($lurl -match '^\s*https?://' -and $shown -notlike "*$lurl*") {
+        $shown = "$shown ($lurl)"
+      }
+      foreach ($r in (Get-InlineRuns -Text $shown -Bold $Bold -Italic $Italic -Depth ($Depth + 1))) {
+        $runs.Add($r)
+      }
+    }
+    $pos = $m.Index + $m.Length
+  }
+  if ($pos -lt $Text.Length) {
+    $runs.Add((New-Run $Text.Substring($pos) $Bold $Italic $false))
+  }
+  return , $runs
+}
+
+# Drop manual character formatting so the paragraph style governs again.
+# Older Word builds can refuse Font.Reset on a collapsed selection, hence the
+# explicit fallback.
+function Reset-Font($Selection) {
+  try { $Selection.Font.Reset() }
+  catch {
+    try {
+      $Selection.Font.Bold = 0
+      $Selection.Font.Italic = 0
+      $Selection.Font.Name = 'Times New Roman'
+    } catch {}
+  }
+}
+
+function Split-InlineMarkdown([string]$Text) {
+  $protected = $Text
+  foreach ($k in $script:inlineEscapes.Keys) {
+    $protected = $protected.Replace($k, [string]$script:inlineEscapes[$k])
+  }
+  $out = New-Object System.Collections.Generic.List[object]
+  foreach ($run in (Get-InlineRuns -Text $protected)) {
+    $t = $run.Text
+    foreach ($k in $script:inlineEscapes.Keys) {
+      $t = $t.Replace([string]$script:inlineEscapes[$k], $k.Substring(1))
+    }
+    if ($t -ne '') { $out.Add((New-Run $t $run.Bold $run.Italic $run.Mono)) }
+  }
+  if ($out.Count -eq 0) { $out.Add((New-Run '' $false $false $false)) }
+  return , $out
+}
+
 # --- Parse markdown into a list of (style, text) tuples ---------------------
 # Markdown rules we honor:
 #   * A blank line ends a paragraph. Consecutive non-blank body lines are JOINED
@@ -251,13 +367,27 @@ try {
     }
     # Set the style for the (current) paragraph before typing.
     try { $sel.Style = $doc.Styles.Item($para.Style) } catch { $sel.Style = $doc.Styles.Item('IEEE Text') }
-    $sel.TypeText($para.Text)
+    # Character formatting is applied per run and reset between runs, so a
+    # style that is itself bold/italic (e.g. IEEE Abstract) keeps its own look:
+    # Reset() drops manual formatting and lets the paragraph style govern, and
+    # bold/italic are only ever turned ON, never forced off.
     if ($para.Mono) {
+      # Fenced code is verbatim: inline markers inside a code block are literal.
+      Reset-Font $sel
       try { $sel.Font.Name = 'Consolas'; $sel.Font.NameFarEast = 'Consolas' } catch {}
+      $sel.TypeText($para.Text)
     } else {
-      # Restore the template's body font (Times New Roman) after a mono block.
-      try { $sel.Font.Name = 'Times New Roman' } catch {}
+      foreach ($run in (Split-InlineMarkdown $para.Text)) {
+        if ($run.Text -eq '') { continue }
+        Reset-Font $sel
+        if ($run.Mono) { try { $sel.Font.Name = 'Consolas' } catch {} }
+        if ($run.Bold) { try { $sel.Font.Bold = 1 } catch {} }
+        if ($run.Italic) { try { $sel.Font.Italic = 1 } catch {} }
+        $sel.TypeText($run.Text)
+      }
     }
+    # Keep formatting from leaking into the next paragraph.
+    Reset-Font $sel
     # Set alignment for this paragraph now that text is typed.
     if ($alignMap.ContainsKey($para.Style)) {
       $sel.ParagraphFormat.Alignment = $alignMap[$para.Style]

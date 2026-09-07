@@ -2,9 +2,14 @@
 # Convert a DVCon paper written in Markdown into a .docx (and optionally .pdf)
 # that matches the IEEE-style DVCon abstract template.
 #
-# This is the bash twin of convert_md_to_docx.ps1. The .ps1 does the real work
-# by driving MS Word via COM (Windows-only). On Windows this script delegates to
-# the .ps1; on other platforms it falls back to a pandoc + LibreOffice path.
+# This is the bash twin of convert_md_to_docx.ps1. Both scripts honor the same
+# markdown -> IEEE style mapping, author-section drop, and inline-run splitting
+# (**bold**, *italic*, `code`, [label](url)).
+#
+# On Windows this script delegates to the .ps1 (MS Word COM). On macOS / Linux
+# it converts the bundled .doc template to .docx with LibreOffice, then
+# fill_ieee_docx.py (stdlib) rewrites the body using the template's named IEEE
+# styles — the same strategy as Word COM, without pandoc.
 #
 # Usage:
 #   convert_md_to_docx.sh \
@@ -12,11 +17,6 @@
 #       --docx     /path/to/paper.docx \
 #       [--pdf     /path/to/paper.pdf] \
 #       [--template /path/to/template.doc]
-#
-#   --markdown  (required) input .md file
-#   --docx      (required) output .docx path
-#   --pdf       (optional) also export a .pdf to this path
-#   --template  (optional) override the bundled template .doc
 #
 # Exit codes:
 #   0  success
@@ -27,6 +27,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_TEMPLATE="$SCRIPT_DIR/../references/dvcon_abstract_template.doc"
 PS1_SCRIPT="$SCRIPT_DIR/convert_md_to_docx.ps1"
+FILL_SCRIPT="$SCRIPT_DIR/fill_ieee_docx.py"
 
 MARKDOWN=""
 DOCX=""
@@ -121,7 +122,6 @@ if is_windows; then
         exit 2
     fi
 
-    MAP="$(find_powershell)"
     # Hand Windows-native paths to the .ps1 so Word COM resolves them.
     args=( -ExecutionPolicy Bypass -NoProfile -File "$(to_native_path "$PS1_SCRIPT")" )
     args+=( -Markdown "$(to_native_path "$MARKDOWN")" )
@@ -135,58 +135,105 @@ if is_windows; then
     exit $?
 fi
 
-# --- Non-Windows path: pandoc + LibreOffice -------------------------------
+# --- Non-Windows path: LibreOffice template + fill_ieee_docx.py ------------
 #
-# pandoc builds the .docx using the bundled template as a reference doc so the
-# IEEE named styles are inherited, then LibreOffice exports the PDF. Neither is
-# installed on the current Windows host, but this branch lets the script run on
-# macOS / Linux boxes that have them.
+# Same mapping as the .ps1: parse markdown into IEEE-styled paragraphs (drop
+# Authors sections, split inline runs), stamp them into a copy of the template
+# that already carries the named styles + US Letter page setup, then optionally
+# export PDF. LibreOffice is used only to (1) turn the bundled legacy .doc into
+# a .docx the zip writer can edit, and (2) export PDF. pandoc is not used —
+# it cannot target the template's IEEE style names.
 
 need_tool() {
     if ! command -v "$1" >/dev/null 2>&1; then
         echo "Error: '$1' not found on PATH." >&2
-        echo "       On this platform the bash wrapper needs pandoc + libreoffice" >&2
-        echo "       to build the .docx/.pdf (the .ps1 path is Windows-only)." >&2
-        echo "       Install pandoc (https://pandoc.org) and libreoffice" >&2
-        echo "       ('soffice' / 'libreoffice'), then re-run." >&2
+        echo "       On this platform the bash wrapper needs python3 + libreoffice" >&2
+        echo "       (the .ps1 path is Windows-only)." >&2
+        echo "       Install Python 3 and LibreOffice ('soffice' / 'libreoffice')," >&2
+        echo "       then re-run." >&2
         return 1
     fi
 }
 
-# pandoc can use a .docx as --reference-doc only if it is the .docx format; the
-# bundled template is a legacy .doc. If the user passed a .docx template or has
-# converted the bundled one, use it; otherwise warn and build a plain .docx.
-build_docx_with_pandoc() {
-    local tpl="$1"
-    if [[ "$tpl" == *.docx ]]; then
-        pandoc "$MARKDOWN" -o "$DOCX" --reference-doc="$tpl"
-    else
-        echo "Note: bundled template is a legacy .doc; pandoc needs .docx for" >&2
-        echo "      --reference-doc. Building a plain .docx without the IEEE" >&2
-        echo "      styles. For template-styled output on Windows, use the .ps1." >&2
-        pandoc "$MARKDOWN" -o "$DOCX"
+find_python() {
+    if command -v python3 >/dev/null 2>&1; then printf 'python3'
+    elif command -v python >/dev/null 2>&1; then printf 'python'
+    else return 1
     fi
 }
 
-need_tool pandoc
-build_docx_with_pandoc "$TEMPLATE"
-echo "WROTE $DOCX"
+find_soffice() {
+    if command -v soffice >/dev/null 2>&1; then printf 'soffice'
+    elif command -v libreoffice >/dev/null 2>&1; then printf 'libreoffice'
+    else return 1
+    fi
+}
 
-if [[ -n "$PDF" ]]; then
-    need_tool soffice 2>/dev/null || need_tool libreoffice
-    SOFFICE="$(command -v soffice || command -v libreoffice)"
-    # Run headless; output dir is the PDF's parent, then rename to the target.
-    pdf_dir="$(dirname "$PDF")"
-    "$SOFFICE" --headless --convert-to pdf --outdir "$pdf_dir" "$DOCX" >&2
-    # soffice names the output <docx-basename>.pdf; rename if different.
-    generated="$pdf_dir/$(basename "${DOCX%.docx}.pdf")"
-    if [[ "$generated" != "$PDF" ]]; then
-        mv -f "$generated" "$PDF"
-    fi
-    if [[ ! -f "$PDF" ]]; then
-        echo "Error: PDF export did not produce $PDF" >&2
-        exit 1
-    fi
-    bytes=$(wc -c < "$PDF" | tr -d ' ')
-    echo "WROTE $DOCX and $PDF ($bytes bytes)"
+if [[ ! -f "$FILL_SCRIPT" ]]; then
+    echo "Error: $FILL_SCRIPT not found next to this script." >&2
+    exit 2
 fi
+if ! PYTHON="$(find_python)"; then
+    echo "Error: python3 not found on PATH." >&2
+    echo "       The non-Windows converter needs Python 3 (stdlib only)." >&2
+    exit 2
+fi
+
+WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/dvcon-md2docx.XXXXXX")"
+cleanup() { rm -rf "$WORKDIR"; }
+trap cleanup EXIT
+
+# A .docx template already has the IEEE styles in OOXML form. A .doc must be
+# converted first so fill_ieee_docx.py can rewrite word/document.xml.
+TEMPLATE_DOCX=""
+case "$TEMPLATE" in
+    *.docx|*.DOCX)
+        TEMPLATE_DOCX="$TEMPLATE"
+        ;;
+    *)
+        if ! SOFFICE="$(find_soffice)"; then
+            echo "Error: LibreOffice not found on PATH (needed to convert the" >&2
+            echo "       bundled .doc template to .docx). Pass a .docx via" >&2
+            echo "       --template to skip this step." >&2
+            exit 2
+        fi
+        "$SOFFICE" --headless --convert-to docx --outdir "$WORKDIR" "$TEMPLATE" >&2
+        converted="$WORKDIR/$(basename "${TEMPLATE%.*}").docx"
+        if [[ ! -f "$converted" ]]; then
+            # soffice sometimes keeps the original basename when converting .doc
+            converted="$(find "$WORKDIR" -maxdepth 1 -name '*.docx' | head -n 1)"
+        fi
+        if [[ -z "$converted" || ! -f "$converted" ]]; then
+            echo "Error: LibreOffice did not produce a .docx from $TEMPLATE" >&2
+            exit 1
+        fi
+        TEMPLATE_DOCX="$converted"
+        ;;
+esac
+
+"$PYTHON" "$FILL_SCRIPT" \
+    --markdown "$MARKDOWN" \
+    --template-docx "$TEMPLATE_DOCX" \
+    --docx "$DOCX"
+
+if [[ -z "$PDF" ]]; then
+    echo "WROTE $DOCX"
+    exit 0
+fi
+
+if ! SOFFICE="$(find_soffice)"; then
+    echo "Error: LibreOffice not found on PATH (needed for PDF export)." >&2
+    exit 2
+fi
+pdf_dir="$(dirname "$PDF")"
+"$SOFFICE" --headless --convert-to pdf --outdir "$pdf_dir" "$DOCX" >&2
+generated="$pdf_dir/$(basename "${DOCX%.docx}.pdf")"
+if [[ "$generated" != "$PDF" ]]; then
+    mv -f "$generated" "$PDF"
+fi
+if [[ ! -f "$PDF" ]]; then
+    echo "Error: PDF export did not produce $PDF" >&2
+    exit 1
+fi
+bytes=$(wc -c < "$PDF" | tr -d ' ')
+echo "WROTE $DOCX and $PDF ($bytes bytes)"

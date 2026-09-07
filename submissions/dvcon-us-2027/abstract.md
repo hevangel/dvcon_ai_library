@@ -2,70 +2,62 @@
 
 ## Abstract
 
-For many years, the DVCon proceedings have represented a valuable but difficult-to-use archive. The papers contain practical knowledge about verification languages, tools, methodologies, and production experience, yet that knowledge is scattered across PDF files and is not easily searchable, comparable, or reusable. Finding an answer often depends on guessing the title or exact terminology of the right paper. There has been no simple way to ask questions across many years of proceedings while preserving a direct path back to the original evidence.
+The DVCon proceedings contain years of practical knowledge about verification languages, tools, methodologies, and production experience, but that knowledge is distributed across PDFs and difficult to search or synthesize. This work presents the **DVCon AI Library**, an open-source, locally deployable knowledge system that converts the proceedings into searchable, evidence-preserving data for engineers and AI agents. The system combines hybrid retrieval, grounded question answering, metadata exploration, trend analysis, an LLM-generated cited wiki, and Model Context Protocol (MCP) access. Beyond document search, the project explores an AI-native workflow in which agents can inspect, compare, cite, and eventually reproduce technical results while preserving links to original papers.
 
-This project began in 2025, around the time Andrew Karpathy popularized the idea of “vibe coding.” Initially, I wanted to build a retrieval-augmented generation (RAG) system and chatbot for the DVCon archive. I am a hardware engineer pretending to be a software engineer, so the project was also an experiment in whether modern AI could help me build software outside my traditional expertise. As AI coding systems improved, the project changed character. Instead of carefully designing every component myself, I could increasingly describe what I wanted and let the software take shape. I have worked on this open-source project since the early days of vibe coding. With the release of Opus 4.6 and GPT-5, AI agents finally became capable of debugging generated code, repairing integration problems, and making the system work end to end.
+## 1. Background
 
-The result is the DVCon AI Library, an open-source application that turns the proceedings into an evidence-preserving knowledge system for both engineers and AI agents. It combines a searchable corpus, semantic retrieval, paper reading, metadata exploration, grounded chat, trend analysis, and an agent-accessible service layer. The goal is not simply to produce plausible answers. It is to make DVCon knowledge easier to inspect, compare, cite, and reuse while retaining links to the original papers.
+The DVCon proceedings are a valuable technical archive, but using many years of papers remains difficult. Finding relevant work often requires knowing the right title or terminology in advance, and comparing ideas across years requires substantial manual effort. The project began in 2025 as an experiment in retrieval-augmented generation (RAG) [1] and in “vibe coding”: could a hardware engineer use modern AI coding agents to build a complete software system outside his primary expertise?
 
-## The Application
+As coding agents improved, the project changed from hand-designing every component to specifying desired behavior and supervising the generated implementation. The resulting DVCon AI Library transforms the archive into a system intended not merely to generate plausible answers, but to make technical knowledge searchable, inspectable, citable, and reusable.
 
-The application begins with a crawler that discovers DVCon papers across years and conference locations. It reproduces the behavior of the DVCon document-search site, follows paper detail pages, and retrieves available PDFs. Each paper is processed through a hybrid extraction pipeline that recovers Markdown text, figures, scholarly metadata, authors, affiliations, and references. The resulting corpus is indexed using both SQLite FTS5 for exact keyword search [5] and vector embeddings for semantic search [2]. Hybrid retrieval combines these approaches because exact terminology and semantic similarity fail in different ways. Retrieval-augmented generation then connects retrieved evidence to grounded responses [1].
+## 2. Application
 
-A web interface allows users to search the corpus, read PDFs and extracted Markdown, explore authors and references, compare selected papers, and ask questions grounded in specific sources. The same capabilities are exposed through a Model Context Protocol server [4], allowing an AI agent to use DVCon knowledge from within an engineering workflow. A packaged skill explains how an agent should search, inspect papers, compare evidence, and cite sources.
+A crawler discovers DVCon papers across conference years and locations, follows paper detail pages, and retrieves available PDFs. The ingestion pipeline converts papers to Markdown and extracts figures, while GROBID enriches scholarly metadata such as titles, abstracts, authors, affiliations, and references [2]. The corpus is indexed using SQLite FTS5 for exact full-text search [3] and BGE-M3 embeddings for semantic retrieval [4]. Combining lexical and semantic search is useful because exact terminology and semantic similarity fail in different ways. Retrieved evidence can then support paper-grounded RAG responses [1].
 
-The final paper will provide more details about the implementation, including the crawler, extraction pipeline, indexing strategy, metadata model, and evaluation. However, the implementation itself is becoming less important. An AI coding agent can now rapidly assemble much of an application like this. When I built the system, I still had to guide the agent and make human decisions about the technology stack, data model, and workflow. By the time DVCon meets next year, it may be enough to describe the desired application and let the agent handle nearly everything else.
+The web application supports corpus search, PDF and Markdown reading, metadata and reference exploration, paper comparison, and grounded chat. The same knowledge is exposed through an MCP server [5], allowing compatible AI agents to search papers, inspect full text and metadata, compare evidence, and use DVCon material inside engineering workflows. The repository also includes an agent skill that describes how to search, inspect, compare, and cite the corpus [6].
 
-## The LLM-Wiki
+## 3. LLM-Wiki
 
-One of the most interesting results of the project is the LLM-wiki, inspired in part by Andrew Karpathy’s LLM-wiki project. The DVCon LLM-wiki is an open-source, generated, cited technical wiki built from the DVCon corpus and available in the project repository. Instead of answering one question at a time, an agent organizes the papers into broader topics such as UVM, formal verification, coverage, safety and security, protocols, SoC verification, and AI-assisted verification flows. Each page is generated from a saved evidence bundle containing the papers and passages used to support its claims. The pages can therefore be regenerated, inspected, and audited rather than treated as untraceable generated prose.
+A major extension is the DVCon LLM-wiki, inspired by Karpathy’s LLM Wiki pattern [7]. Search answers “Where is the relevant paper?” and chat answers “What do these papers say?” A wiki serves a different purpose: it creates a persistent, revisable map of the field.
 
-The LLM-wiki is useful for more than search and chat. Search helps locate papers, and chat helps answer questions, but a wiki provides a persistent map of the field. It reveals how concepts connect, which techniques recur across years, how terminology changes, and where different communities discuss similar problems using different language. It also gives engineers a starting point for learning a topic, preparing a design review, writing a verification plan, or identifying prior art before beginning a new project.
+An agent organizes the corpus into topics such as UVM, formal verification, coverage, safety and security, protocols, SoC verification, and AI-assisted verification. Each page is generated from a saved evidence bundle containing the papers and passages used for its claims. Pages can therefore be regenerated, inspected, and audited instead of becoming untraceable generated prose.
 
-The wiki demonstrates a broader idea: once a conference archive is represented as structured, inspectable data, an AI agent can reorganize the archive into new forms of technical knowledge without breaking the connection to the original authors and papers. It also connects this project to an emerging pattern in which language models are used not merely to retrieve documents, but to construct durable, cited, and continuously revisable knowledge bases.
+This structure helps engineers learn a topic, prepare reviews, build verification plans, and identify prior art. More broadly, it demonstrates that once a conference archive is represented as structured and inspectable data, an AI agent can reorganize it into new technical knowledge while retaining provenance to the original authors and papers.
 
-## Insights and Trends
+## 4. Insights Across 17 Years
 
-The corpus also supports analysis across the full archive. The project examines changes in verification languages and methodologies, geographic and organizational participation, industry and academic representation, and the availability of public artifacts. It can show which terms rise and fall over time, which topics persist, and how new approaches enter the DVCon vocabulary.
+The structured corpus also enables longitudinal analysis that is difficult when papers are read individually. The project examines changes in verification languages and methodologies, geographic and organizational participation, industry versus academic contribution, collaboration patterns, and the availability of public artifacts.
 
-Several findings are especially interesting because they are difficult to notice when papers are read individually. The analysis can identify which author has contributed the most papers, which organizations and research groups appear most consistently, and which authors have published continuously across the longest span. It can also reveal who published in the earliest year represented in the corpus and was still publishing as recently as 2025. Other patterns show technologies that appear suddenly and then become part of the background vocabulary, as well as topics that remain present for many years but change meaning as tools and methodologies evolve.
+Simple questions become surprisingly informative: Which authors contributed the most papers? Which organizations appear most consistently? Who published over the longest span? Which authors appear in the earliest year represented by the corpus and were still publishing in 2025? Term-frequency and metadata analysis can also show technologies that rise rapidly, topics that persist while changing meaning, and communities that discuss similar problems using different terminology.
 
-Authors, companies, and research groups also form patterns that are easier to see through metadata and citation relationships than through ordinary reading. These include recurring collaborations, shifts in industry and academic participation, and the movement of ideas between communities.
+These analyses turn the archive from a collection of documents into a dataset about the history of verification practice. The full paper and presentation will include quantitative results, visualizations, and examples derived from the completed corpus.
 
-The full DVCon paper and presentation will include more of these observations, along with additional visualizations and examples of how the corpus can be used to explore the history of verification practice.
+## 5. Open Source and AI-Native Workflow
 
-## Open Source and an AI-Native Workflow
+The implementation, LLM-wiki, analysis scripts, generated insights, and agent skills are open source [6]. The repository does not redistribute the DVCon proceedings archive; users run the crawler against the official proceedings to construct a local corpus. This preserves a direct connection to the source material while avoiding redistribution of conference PDFs.
 
-The project is open source. The LLM-wiki, application code, analysis scripts, generated insight slides, and agent skills are available in the repository. Because of copyright concerns, the repository does not redistribute the DVCon PDFs. Users must run the scraper themselves to download papers from the official proceedings and generate their own local corpus. This keeps the project focused on open tooling and derived knowledge while respecting ownership of the original documents.
+The larger design goal is an **AI-native engineering workflow**: the agent should be able to access the same papers, metadata, search results, graphs, and statistics available to the human user. A separate chatbot receiving copied text is insufficient. Through MCP and packaged skills, an agent can operate on the corpus directly.
 
-The application is also intended as a next-generation environment in which humans and AI agents work together. The central design concern is an AI-native workflow: the AI should be able to see everything the human can see, and the AI should be able to do everything the human can do. A separate chatbot that receives copied text is not enough. The agent needs access to the same papers, search results, metadata, graphs, statistics, and reading interfaces available to the engineer.
+A future extension is experimental reproduction. Given a paper and suitable tools, an agent could attempt the described experiment, compare the result with the publication, and record supporting or contradictory evidence. The repository also includes a DVCon submission skill to help authors organize submissions, check structure and completeness, and revise technical writing. This extended abstract itself was authored by the author with AI assistance for editing and language polishing.
 
-The application therefore includes an MCP control plane through which an agent can invoke skills. An agent can search for relevant DVCon papers, read the full text, inspect figures and references, compare approaches, and use the evidence in a verification workflow. In the future, the agent should also be able to read a paper and try the experiment described in it, using available tools to confirm or challenge the paper’s findings. This turns the proceedings from a passive archive into an active engineering resource.
+## 6. Conclusion
 
-The repository also includes a DVCon submission skill. This skill is intended to help an agent understand the submission process, organize a paper, check its structure and completeness, and support the author through revisions. The abstract submitted through this skill was authored by me, with substantial assistance from AI for grammar correction and sentence polishing. The exact workflow is still evolving, but the direction is clear: AI agents should not only retrieve prior knowledge; they should help engineers create, validate, and submit new knowledge.
+The DVCon AI Library began as a solution to a search problem and became an experiment in AI-assisted software development, RAG, structured technical knowledge, and human-agent collaboration. It provides hybrid search, grounded chat, metadata exploration, longitudinal analysis, a cited LLM-wiki, MCP services, and agent skills while preserving the path from generated insight back to original evidence.
 
-Because this area is changing so quickly, much of what is written here will probably be outdated by the time the conference takes place next March. The application will likely be reimplemented several more times. The architecture, tools, and agent capabilities may all change, but the underlying goal will remain the same: make technical knowledge accessible to both humans and machines while preserving evidence and authorship.
-
-## Conclusion
-
-The DVCon AI Library began with a simple problem: there was no easy way to use the DVCon proceedings across many years. It became an experiment in vibe coding, AI-assisted software development, retrieval-augmented generation, structured technical knowledge, and human–agent collaboration.
-
-The project transforms a difficult-to-search PDF archive into an open, locally deployable knowledge system. It provides hybrid search, paper-grounded chat, metadata exploration, trend analysis, an LLM-wiki, MCP services, and agent skills. More importantly, it preserves the path from generated insight back to the original papers.
-
-I invite the DVCon community to collaborate, contribute ideas, test the tools, and improve the workflows. Contributions are especially welcome for older proceedings, particularly papers published before 2010 that are not currently downloadable through the existing archive. Recovering those papers would make the historical view much more complete and help ensure that the next generation of AI tools can learn from the full history of DVCon.
+The project is intended as a community resource. Contributions are especially welcome for older proceedings, particularly papers before 2010 that are not currently downloadable through the existing archive. Recovering them would make the historical analysis more complete and help future AI tools learn from a fuller record of verification practice.
 
 ## References
 
-[1] P. Lewis et al., “Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks,” NeurIPS, 2020.
+[1] P. Lewis *et al*., “Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks,” in *Advances in Neural Information Processing Systems*, vol. 33, 2020, pp. 9459–9474.
 
-[2] J. Chen, S. Xiao, P. Zhang, et al., “BGE M3-Embedding: Multi-Lingual, Multi-Functionality, Multi-Granularity Text Embeddings Through Self-Knowledge Distillation,” 2024.
+[2] P. Lopez, “GROBID: Combining Automatic Bibliographic Data Recognition and Term Extraction for Scholarship Publications,” in *Research and Advanced Technology for Digital Libraries*, Lecture Notes in Computer Science, vol. 5714, 2009, pp. 473–474, doi: 10.1007/978-3-642-04346-8_62.
 
-[3] P. Lopez, “GROBID: Combining Automatic Bibliographic Data Recognition and Term Extraction for Scholarship Publications,” TPDL, 2009.
+[3] SQLite, “SQLite FTS5 Extension,” *SQLite Documentation*. [Online; accessed Sep. 7, 2026].
 
-[4] Anthropic, “Model Context Protocol Specification,” 2024.
+[4] J. Chen, S. Xiao, P. Zhang, K. Luo, D. Lian, and Z. Liu, “M3-Embedding: Multi-Linguality, Multi-Functionality, Multi-Granularity Text Embeddings Through Self-Knowledge Distillation,” in *Findings of the Association for Computational Linguistics: ACL 2024*, 2024, pp. 2318–2335, doi: 10.18653/v1/2024.findings-acl.137.
 
-[5] SQLite Consortium, “SQLite FTS5 Full-Text Search Extension.”
+[5] Model Context Protocol, “Specification (2024-11-05),” 2024. [Online; accessed Sep. 7, 2026].
 
-[6] “DVCon AI Library.” Available: [https://github.com/hevangel/dvcon\_ai\_library](https://github.com/hevangel/dvcon_ai_library)
+[6] “DVCon AI Library,” GitHub repository, 2026. [Online; accessed Sep. 7, 2026].
 
-[7] Andrew Karpathy, “LLM-Wiki.” Available: [project URL to be added]
+[7] A. Karpathy, “LLM Wiki,” GitHub Gist, Apr. 4, 2026. [Online; accessed Sep. 7, 2026].
