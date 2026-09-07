@@ -1,17 +1,21 @@
 ---
 name: dvcon-submit
-description: Submit papers to the DVCon (Design & Verification Conference) U.S. call for papers via the Oxford Abstracts portal — both the extended-abstract stage and the later full-paper stage — by driving a real browser with the playwright-cli command-line tool. Also converts a DVCon paper written in Markdown into a properly-styled, DVCon/IEEE-template-compliant .docx and .pdf using MS Word. Use whenever the user wants to submit an extended abstract or full paper to DVCon, fill out the DVCon submission form, upload a paper to Oxford Abstracts, enter authors/affiliations/topics into the DVCon submission system, or convert a markdown paper to the DVCon Word template / PDF — even if they don't explicitly say "Oxford Abstracts", "playwright-cli", or "Word template".
+description: Submit papers to the DVCon (Design & Verification Conference) U.S. call for papers via the Oxford Abstracts portal — both the extended-abstract stage and the later full-paper stage — by driving a real browser with the playwright-cli command-line tool. Also converts a DVCon paper written in Markdown into a properly-styled, DVCon/IEEE-template-compliant .docx and .pdf using MS Word, and fills the Accellera/DVCon copyright + speaker-consent PDF. Use whenever the user wants to submit an extended abstract or full paper to DVCon, fill out the DVCon submission form, fill the DVCon copyright form, upload a paper to Oxford Abstracts, enter authors/affiliations/topics into the DVCon submission system, or convert a markdown paper to the DVCon Word template / PDF — even if they don't explicitly say "Oxford Abstracts", "playwright-cli", "copyright form", or "Word template".
 ---
 
 # DVCon Submit
 
-This skill does two things for DVCon U.S. paper submissions:
+This skill does three things for DVCon U.S. paper submissions:
 
 1. **Convert** a paper written in Markdown into a `.docx` (and optionally `.pdf`)
    that matches the IEEE-style DVCon abstract template, via MS Word COM. The
    output uses the template's named IEEE styles so it inherits the right fonts,
    sizes, margins, and US Letter paper size automatically.
-2. **Submit** the resulting PDF (or the user's existing PDF) to the DVCon U.S.
+2. **Fill** the Accellera/DVCon **copyright permission + speaker-consent** PDF
+   (title, all author names, company, paper ID, dates). Signature widgets stay
+   blank unless the user supplies a signature image — the skill never forges a
+   handwritten signature.
+3. **Submit** the resulting PDF (or the user's existing PDF) to the DVCon U.S.
    call for papers on **Oxford Abstracts**, by driving a real browser with the
    **`playwright-cli`** command-line tool — including the file upload, which the
    ZCode in-app browser cannot do but `playwright-cli upload` can.
@@ -31,21 +35,24 @@ Trigger this skill when the user wants to:
 - upload a paper PDF to the DVCon / Oxford Abstracts submission system
 - enter authors, affiliations, or topics into the DVCon submission form
 - convert a markdown paper to the DVCon Word template / PDF
+- fill the DVCon / Accellera copyright form (and speaker-consent page)
 - prepare a DVCon abstract or full paper for submission
 
 Do **not** trigger this for tutorials/workshops or panel submissions — those are
 separate Oxford Abstracts stages with different forms.
 
-## Two tools, two stages
+## Three tools, two stages
 
 | Task | Stage | Tool |
 |------|-------|------|
 | Convert markdown → `.docx` + `.pdf` (template-styled) | either | `scripts/convert_md_to_docx.ps1` (PowerShell, MS Word COM) or `scripts/convert_md_to_docx.sh` (bash twin; delegates to the `.ps1` on Windows, else `fill_ieee_docx.py` + LibreOffice) |
+| Fill the copyright + speaker-consent PDF | full paper | `scripts/fill_copyright_form.py` (PyMuPDF; bundled `references/dvcon-copyright-form-2027.pdf`) |
 | Drive the submission form (fill fields, upload PDF, click Submit) | either | `playwright-cli` (real browser) |
 
 The conversion is optional — if the user already has a compliant PDF, skip
-straight to submission. The submission is optional too — if the user only wants
-the PDF, stop after conversion.
+straight to submission. Copyright filling is for the **full-paper** stage (and
+can be prepared earlier). The submission is optional too — if the user only
+wants a PDF, stop after conversion / copyright fill.
 
 ## Prerequisites
 
@@ -72,6 +79,10 @@ the PDF, stop after conversion.
   (email/password, Google, or LinkedIn) in that visible window, then continue.
   Never enter credentials yourself.
 - The user must have a finished, compliant paper PDF.
+- **Copyright form** (full-paper stage): PyMuPDF, already a backend
+  dependency. Run the filler with `uv run --project backend python …`. The
+  blank form is bundled; re-download from dvcon.org if the conference year
+  changes.
 
 ## Collect the submission payload first
 
@@ -89,6 +100,11 @@ emails, affiliations, or topics.
 | `primary_topic` | yes | One of the 14 topics (see `references/submission_reference.md`). |
 | `secondary_topic` | optional | One of the same 14 topics. |
 | `consents` | yes (all 3) | Publish permission, all-authors-approved, will-attend-and-present. |
+| `company` | full-paper copyright | Employer / copyright holder named in the license sentence. |
+| `paper_id` | full-paper copyright | Oxford Abstracts paper id. The 2027 PDF has no Paper ID widget; the filler appends it to the title. |
+| `copyright_date` | full-paper copyright | Date the form is signed. |
+| `authorized_signer` | full-paper copyright | Employer authorized signer's name and title, when work was done for an employer. |
+| `speaker_consent` | full-paper copyright | User must confirm DVCon may record and post the talk on the virtual platform. |
 
 ### Stage-specific PDF rules
 
@@ -105,8 +121,10 @@ emails, affiliations, or topics.
 - 6–8 pages.
 - Same US Letter / font-embedding / no-security rules.
 - **Author names and affiliations ARE included** in the full paper.
-- A signed **copyright form** (PDF) must also be uploaded by the final deadline,
-  filled with Title + all author names + paper ID.
+- A signed **copyright form** (PDF) must also be uploaded by the final deadline.
+  Fill it with Workflow B (title + all author names + paper ID + company), then
+  the user signs (Acrobat or wet-ink). Upload via the submission page's
+  Upload File control.
 
 ## Workflow A — Convert markdown to the DVCon template PDF
 
@@ -174,13 +192,64 @@ paper**, author info must be retained. Two options:
 - Or convert without the author section, then open the `.docx` in Word and add
   the author block manually before exporting the PDF.
 
-## Workflow B — Submit to Oxford Abstracts via playwright-cli
+## Workflow B — Fill the copyright + speaker-consent PDF
+
+Read `references/copyright_reference.md` for the AcroForm field map. Several
+Acrobat field names on the 2027 PDF do **not** match the visible labels
+(Author's Name(s) is stored as `Title of Document 2`; Date Form Signed is a
+Signature widget). The script maps those; do not fill by guessing names from a
+snapshot of the PDF.
+
+Required before running: `title`, every author name in printed order,
+`company` (the license names the copyright holder), and the Oxford Abstracts
+`paper_id` once the user has it. Ask if any of those are missing. Also ask:
+
+- the signature date (default today only after confirming)
+- presenter name (defaults to the first author)
+- authorized signer name + title, if the work was done for an employer
+- whether to check the speaker-consent box (virtual-platform recording license)
+- whether the user has a signature PNG/JPG, or will sign in Acrobat / on paper
+
+Do **not** complete PART B (U.S. Government employees). If the user says they
+are a U.S. Government employee whose work is not subject to copyright, stop
+and tell them to fill PART B themselves.
+
+```bash
+uv run --project backend python \
+  "<skill_dir>/scripts/fill_copyright_form.py" \
+  --title     "An AI Interface to 17 Years of DVCon" \
+  --author    "Jane Doe" \
+  --author    "John Smith" \
+  --company   "Example Corp" \
+  --presenter "Jane Doe" \
+  --paper-id  "12345" \
+  --date      2026-09-07 \
+  --authorized-signer "Jane Doe, Engineer" \
+  --speaker-consent \
+  --output    C:\papers\copyright.pdf
+```
+
+Pass `--author-signature` / `--speaker-signature` / `--employer-signature` only
+when the user provides an image of an already-written signature. Otherwise
+leave those widgets blank and tell the user to sign before upload.
+
+After filling, read the JSON summary back to the user (title, authors, company,
+paper ID suffix, date, consent checkbox, unsigned=true/false). Then:
+
+1. If `unsigned` is true, wait for the user to sign.
+2. Upload the signed PDF on the full-paper Oxford Abstracts page with
+   `playwright-cli click "label.fu-hover"` then
+   `playwright-cli upload "<absolute signed pdf>"` (same Choose File gotcha as
+   the paper upload). Re-snapshot first — the control is **Upload File**, not
+   the abstract-stage "Extended Abstract - Upload".
+
+## Workflow C — Submit to Oxford Abstracts via playwright-cli
 
 Read `references/submission_reference.md` for exact field labels, the 14 topic
 dropdown options, the two country-dropdown label variants, and the rich-text
 editor gotchas. The reference is the source of truth for the form.
 
-### B.1 Open a persistent, visible browser
+### C.1 Open a persistent, visible browser
 
 ```bash
 playwright-cli open --headed --persistent
@@ -190,7 +259,7 @@ playwright-cli open --headed --persistent
 profile so login survives across runs. If the user already has a session open,
 `playwright-cli list` shows it; otherwise `open` creates one.
 
-### B.2 Discover the submitter URL and navigate
+### C.2 Discover the submitter URL and navigate
 
 Discover the current portal URL rather than guessing the stage id — it changes
 every year (DVCon U.S. 2027 = stage `81951`):
@@ -205,7 +274,7 @@ From the snapshot, find the **Submit Now** link
 sign-in page appears, ask the user to log in in the visible window, then
 `snapshot` again. After login the portal lands on the new-submission form.
 
-### B.3 Take a snapshot to get element refs
+### C.3 Take a snapshot to get element refs
 
 ```bash
 playwright-cli snapshot
@@ -216,7 +285,7 @@ element **ref** from the most recent snapshot, or a unique CSS selector. Always
 `snapshot` before acting, and re-snapshot after any action that re-renders the
 page (e.g., clicking "+ Add Another Author"). Stale refs cause failures.
 
-### B.4 Fill the fields
+### C.4 Fill the fields
 
 Use the refs from the snapshot. Field order and the exact labels are in
 `references/submission_reference.md`; the short summary:
@@ -253,7 +322,7 @@ playwright-cli select "<secondary_topic_ref>" "Coverage"
 
 The two country dropdowns use **different option labels** — see the reference.
 
-### B.5 Upload the PDF (playwright-cli CAN do this)
+### C.5 Upload the PDF (playwright-cli CAN do this)
 
 ```bash
 playwright-cli click  "label.fu-hover"        # NOT the "Choose File" snapshot ref
@@ -271,7 +340,7 @@ related modal state present`. Click the **label** instead; a good click reports
 re-snapshot and confirm the widget now shows `Replace file ...`, a `Remove`
 button, and a `Download uploaded file` link.
 
-### B.6 Final review and submit
+### C.6 Final review and submit
 
 Read back every field value to the user for sign-off (title, short description,
 all authors + affiliations, topics, country, the three consents, and
@@ -288,7 +357,7 @@ If the form surfaces validation errors, re-snapshot, report the exact errors,
 fix them, and re-review. Never click Submit without explicit user confirmation —
 submission is a hard-to-reverse outward action.
 
-### B.7 Full-paper stage differences
+### C.7 Full-paper stage differences
 
 When the user returns to submit the **full paper** after preliminary acceptance:
 
@@ -297,6 +366,7 @@ When the user returns to submit the **full paper** after preliminary acceptance:
 - The full paper **includes** author info — do NOT apply the double-blind drop.
   See "Full-paper conversion caveat" under Workflow A.
 - A signed copyright form PDF must also be uploaded before the final deadline.
+  Produce it with Workflow B; do not upload a blank or unsigned form.
 - The page limit is 6–8 pages, not 600–1200 words.
 
 ## Safety rules
@@ -304,8 +374,13 @@ When the user returns to submit the **full paper** after preliminary acceptance:
 - **Never click Submit without explicit user confirmation.**
 - **Never enter the user's credentials.** Hand login to the user via the headed
   window.
-- **Never invent author names, emails, affiliations, or topics.** If the payload
-  is incomplete, ask.
+- **Never invent author names, emails, affiliations, topics, or copyright
+  company / paper ID.** If the payload is incomplete, ask.
+- **Never forge a handwritten signature** on the copyright form. Leave the
+  signature widgets blank or stamp only an image the user supplied.
+- **Do not check speaker consent** on the copyright PDF unless the user has
+  confirmed the virtual-platform recording license.
+- **Do not fill PART B** of the copyright PDF (U.S. Government employees).
 - **Abstract stage is double-blind.** The markdown converter drops `## Authors`
   sections automatically; also warn if the body prose mentions specific
   companies or uses "we [at Company]" phrasing that could de-anonymize.
@@ -336,3 +411,8 @@ When the user returns to submit the **full paper** after preliminary acceptance:
 | `upload` says "can only be used when there is related modal state present" | The Choose File click did not open the chooser. Click `label.fu-hover`, not the `Choose File` snapshot ref (that ref is the hidden `input.sr-only`, and the label intercepts pointer events). Then `upload` the **absolute** path. |
 | Title truncated unnecessarily | The `0/50` counter on Title counts **words**, not characters. A 47-character title reads `9/50`. |
 | Validation error on Submit | Re-snapshot, report the exact message, fix, re-review with the user |
+| `fill_copyright_form.py`: "PyMuPDF (fitz) is required" | Run via `uv run --project backend python …` from the repo root. |
+| `fill_copyright_form.py`: author names landed on the title line | The 2027 form stores authors in the widget named `Title of Document 2`. Re-run the script rather than editing field names by hand. |
+| Copyright PDF has no Paper ID box | Expected for 2027. Pass `--paper-id`; it is appended to the title. |
+| Copyright PDF still shows SIGN placeholders | Signature widgets are blank on purpose. Sign in Acrobat, or pass `--author-signature` / `--speaker-signature`. |
+| PART B (U.S. Government) left empty | Expected. Only U.S. Government employees complete that block, by hand. |

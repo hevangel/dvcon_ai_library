@@ -7,7 +7,7 @@ gotchas are captured here so the skill builds locators from facts, not guesses.
 
 The form is driven with **`playwright-cli`** (a real-browser command-line tool),
 not the ZCode in-app browser. `playwright-cli` supports `upload`, so the PDF
-upload is fully automatable. See `SKILL.md` Workflow B for the command flow.
+upload is fully automatable. See `SKILL.md` Workflow C for the command flow.
 
 > These facts were captured from the live DVCon U.S. 2027 stage (event id 77379,
 > Oxford Abstracts stage `81951`). The **form shape is stable across years**;
@@ -147,7 +147,7 @@ only check after the user has actually confirmed each fact.
 
 - Button text: `Submit`
 - Drive with `playwright-cli click "<submit_ref>"`.
-- Only click after explicit user confirmation (see SKILL.md Workflow B step B.6).
+- Only click after explicit user confirmation (see SKILL.md Workflow C step C.6).
   Submission is a hard-to-reverse outward action.
 
 ## Full-paper stage differences
@@ -162,8 +162,10 @@ submission dashboard, not the abstract "Submit Now" link). Key differences:
   "Full-paper conversion caveat".
 - **Page limit is 6–8 pages**, not 600–1200 words.
 - **A signed copyright form (PDF)** must also be uploaded before the final
-  deadline, via the submission page's Upload File link. The form must be filled
-  with the paper Title + all author names + paper ID, then signed.
+  deadline, via the submission page's Upload File link. Produce it with
+  `scripts/fill_copyright_form.py` (see `copyright_reference.md`): title, all
+  author names, company, paper ID (appended to the title — the 2027 PDF has no
+  Paper ID widget), then the user signs. Do not upload a blank form.
 - The form fields (Title, Short Description, Authors, Topics, consents) are
   largely the same; re-`snapshot` to confirm exact labels for the target stage,
   since the stage id and some field wording differ.
@@ -254,4 +256,7 @@ the exact dates for the target year):
 
 The copyright form (PDF) must be uploaded via the Upload File link on the
 submission page **by Dec 23, 2026** — filled with Title + all author names +
-paper ID, signed. Without it the paper cannot be included in the proceedings.
+paper ID + company, then signed. Fill the bundled 2027 PDF with
+`scripts/fill_copyright_form.py` (field map in `copyright_reference.md`); the
+user must still sign. Without it the paper cannot be included in the
+proceedings.
